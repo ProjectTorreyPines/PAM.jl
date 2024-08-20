@@ -1,0 +1,4 @@
+name = "PAM"
+uuid = "8217f67a-9bf0-495c-a6dc-30c3fb73287a"
+authors = ["Galina Avdeeva <80053907+avdeevag@users.noreply.github.com>"]
+version = "0.1.0"
