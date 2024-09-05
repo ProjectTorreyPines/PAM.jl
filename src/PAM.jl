@@ -222,7 +222,22 @@ function update_pellet_densities(drhodR::AbstractVector, drhodZ::AbstractVector,
 
 end
 
-#
+function ablate!(pelt::Pellet1)
+    ablation_factor = 0.00001
+    norm = pelt.radius[1] / maximum(pelt.ne .* pelt.Te)
+    for k in 2:length(pelt.time)
+        pelt.t = pelt.time[k]
+        pelt.radius[k] = pelt.radius[k-1]
+        if pelt.radius[k] > 0.0 && pelt.ρ[k] < 1.0
+            dr_dt = - ablation_factor * (pelt.ne[k] * pelt.Te[k]) * norm / (pelt.time[k] - pelt.time[k-1])
+            pelt.radius[k] += dr_dt
+            if pelt.radius[k] < 0.0
+                pelt.radius[k] = 0.0
+            end
+        end
+    end
+    return pelt
+end
 
 mutable struct Pellet1{A,T}
     properties::IMAS.pellets__time_slice___pellet
@@ -279,15 +294,15 @@ function Pellet1(pelt::IMAS.pellets__time_slice___pellet, eqt::IMAS.equilibrium_
     radii = cumsum([layer.thickness for layer in pelt.layer])
     @assert pelt.shape.size[1] == radii[end] "The layer's thickness don't add up to the total radius"
     radius = fill(radii[end], size(time))
-    radius = time[end] .- time
 
     return Pellet1(pelt, time, time[1], r, z, x, y, ρ, Te, ne, radius)
 end
 
 @recipe function plot_pellet(pelt::Pellet1)
+    deposition = abs.(IMAS.gradient(pelt.radius))
     @series begin
         label := "pellet $(IMAS.index(pelt.properties))"
-        linewidth := pelt.radius ./ pelt.radius[1] * 5
+        linewidth := deposition ./ maximum(deposition) * 5 .+ 0.1
         pelt.r, pelt.z
     end
     @series begin
@@ -308,6 +323,8 @@ function run_pam(dd::IMAS.dd, inputs)
     time = collect(range(inputs.t0, inputs.tf, step=inputs.dt))
 
     pellet = Pellet1(dd.pellets.time_slice[].pellet[1], eqt, cp1d, time)
+
+    ablate!(pellet)
 
     return pellet
 
