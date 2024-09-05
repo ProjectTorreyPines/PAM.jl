@@ -223,20 +223,23 @@ function update_pellet_densities(drhodR::AbstractVector, drhodZ::AbstractVector,
 end
 
 function ablate!(pelt::Pellet1)
-    ablation_factor = 0.00001
-    norm = pelt.radius[1] / maximum(pelt.ne .* pelt.Te)
     for k in 2:length(pelt.time)
         pelt.t = pelt.time[k]
         pelt.radius[k] = pelt.radius[k-1]
         if pelt.radius[k] > 0.0 && pelt.ρ[k] < 1.0
-            dr_dt = - ablation_factor * (pelt.ne[k] * pelt.Te[k]) * norm / (pelt.time[k] - pelt.time[k-1])
-            pelt.radius[k] += dr_dt
+            pelt.radius[k] += dr_dt(pelt, k)
             if pelt.radius[k] < 0.0
                 pelt.radius[k] = 0.0
             end
         end
     end
     return pelt
+end
+
+function dr_dt(pelt::Pellet, k::int)
+    ablation_factor = 0.00001
+    norm = pelt.radius[1] / maximum(pelt.ne .* pelt.Te)
+    return - ablation_factor * (pelt.ne[k] * pelt.Te[k]) * norm / (pelt.time[k] - pelt.time[k-1])
 end
 
 mutable struct Pellet1{A,T}
