@@ -3,7 +3,7 @@ module PAM
 import IMAS
 using Plots
 using DifferentialEquations
-
+using Statistics
 
 function pellet_position(starting_position::Vector{Float64}, velocity_vector::Vector{Float64}, time::AbstractVector, tinj::Float64)
     x = starting_position[1] .+ velocity_vector[1] .* (time .- tinj)
@@ -51,7 +51,7 @@ end
 get_ilayer: This function returns the layer index based on current pellet radius and radii of the pellet players.
 """
 
-function get_ilayer(pellet_radius::Float64, layers_radii::Vector{Any}, nComp::Int) #, pellet_index::Int, t::Float64)
+function get_ilayer(pellet_radius::Float64, layers_radii::Vector{Any}, nComp::Int) 
     pos = pellet_radius .- layers_radii
 
     if maximum(pos) >= 0.0
@@ -70,7 +70,7 @@ end
 
 
 
-mutable struct Pellet1{A,T}
+mutable struct Pellet1{A,T, N}
     properties::IMAS.pellets__time_slice___pellet
     time::A
     t::T
@@ -84,9 +84,17 @@ mutable struct Pellet1{A,T}
     ne::A
     radius::A
     ablation_rate::A
+    density_source::N
 end
 
-function Pellet1(pelt::IMAS.pellets__time_slice___pellet, eqt::IMAS.equilibrium__time_slice, cp1d::IMAS.core_profiles__profiles_1d, time::Vector{Float64})
+# the number of g/m^-3 # the data of mass density and atomic weight is sourced from PAM model within OMFIT
+function pellet_mass_density(species::String)
+    material_density = Dict("DT" => 0.257, "D" => 0.2, "T" => 0.318, "C" => 3.3, "Ne" => 1.44)
+    return material_density[species] * 1E-12
+end
+
+
+function Pellet1(pelt::IMAS.pellets__time_slice___pellet, eqt::IMAS.equilibrium__time_slice, cp1d::IMAS.core_profiles__profiles_1d, time::Vector{Float64}, surfaces::Vector{IMAS.FluxSurface} )
     # coordinates of the pellet
     # first point
     R1 = pelt.path_geometry.first_point.r
@@ -129,13 +137,13 @@ function Pellet1(pelt::IMAS.pellets__time_slice___pellet, eqt::IMAS.equilibrium_
     @assert pelt.shape.size[1] == radii[end] "The layer's thickness don't add up to the total radius"
     radius = fill(radii[end], size(time))
     ablation_rate = fill(0.0, size(time))
-
-    return Pellet1(pelt, time, time[1], Bt, r, z, x, y, ρ, Te, ne, radius, ablation_rate)
+    density_source = fill(0.0, (length(time), length(surfaces)))
+    return Pellet1(pelt, time, time[1], Bt, r, z, x, y, ρ, Te, ne, radius, ablation_rate, density_source)
 end
 
 function drift(pelt::Pellet1, k::Int)
     # just a simple assumtion now
-    dr_drift = 0.5*pelt.radius[k]
+    dr_drift = 0.0
 
     return dr_drift
 end
@@ -154,15 +162,14 @@ function dr_dt(pelt::Pellet1, k::Int)
     #  following numbers (rho) are from OMFIT script, are they really correct? 
     ρ_D = 0.2
     ρ_T = 0.318
-
+    #ρ_pellet=Float64[]
 
     for species in layer.species
-
         tmp = IMAS.ion_properties(Symbol(species.label))
         push!(A, tmp.a)
         push!(Z, tmp.z_n)
         push!(fractions, species.fraction)
-
+       # push!(ρ_pellet, pellet_mass_density(Symbol(species.label)) )
 
         if species.label == "D"
 
@@ -179,83 +186,76 @@ function dr_dt(pelt::Pellet1, k::Int)
     @assert sum(fractions) == 1.0 "Species fractions dont sum up to 1.0"
 
 
-
+    
     Wratio = (1 - fractD) * AT / AD + fractD
     # following equation is from the paper, not OMFIT script
     ρ_mean = (1 - fractD + fractD * AD / AT) * ((1 - fractD) / ρ_T + (fractD * AD / AT) / ρ_D)^(-1)
-    # probably Bt should be something
-    Bt_exp = 1.0
-    c0 = 8.358 * Wratio^0.6667 * (abs(pelt.Bt) / 2.0)^Bt_exp
-    #Wavg = sum(A.*fractions)
-    cont=1e-18 # just for testing and plotting
-    dr_dt = -c0 / ρ_mean * pelt.Te[k]^1.6667 * pelt.ne[k]^0.3333 / abs(pelt.radius[k])^0.6667*cont
-    dr_dt *= 1e-3  # to make everything in meters?
-    G = -dr_dt * (4 * pi * ρ_mean * pelt.radius[k] * pelt.radius[k])
-    # drpdt *=1e-3   #???? do we need this? cm/s to cm/ms?
-    # Gd = -fracD*G*N_A*1e3/Wavg*ZD
-    # Gt = -fracT*G*N_A*1e3/Wavg*ZT
+    @assert ρ_mean > 0.0
+   
+   
+    A_mean=AT*fractT+AD*fractD
     
-    return (dr_dt, G)   
+    # following equation is from the paper, not OMFIT script
+    ρ_zero = (1 - fractD + fractD * AD / AT) * ((1 - fractD) / ρ_T + (fractD * AD / AT) / ρ_D)^(-1)
+   
+    G=39*(1e+2*pelt.radius[k]/0.2)^(4/3)*(A_mean/AD)^(2/3)*(pelt.Te[k].*1e-3).^(5/3)* (pelt.ne[k]*1e-26)^(1/3)
+    
+    dr_dt = - G / (4 * pi * ρ_mean * (pelt.radius[k]*1e+2)^2)
+    
+    return (radius_variation=dr_dt, ablation_rate=G)   
 end
 
-function pellet_density(pelt::Pellet1, eqt::IMAS.equilibrium__time_slice, k::Int)
+function pellet_density(pelt::Pellet1, surface::IMAS.FluxSurface, k::Int)
+    cloudFactor = 0.1
+    cloudFactorR=cloudFactor
+    cloudFactorZ=cloudFactor
     
-    
-    R=dd.equilibrium.time_slice[].global_quantities.magnetic_axis.r
-    Z = dd.equilibrium.time_slice[].global_quantities.magnetic_axis.z
-    shiftR = drift(pelt[k])
+    shiftR = drift(pelt,k)
     rcloudR=pelt.radius[k]*cloudFactorR  # from original pellet dd or should it be in Pellet1?
     rcloudZ=pelt.radius[k]*cloudFactorZ
-    nsource = exp(-0.5 * ((pelt.r[k] - R + 0.5 * shiftR) ^ 2 / (rcloudR + 0.25 * shiftR) ^ 2 + (pelt.z[k] - Z) ^ 2 / rcloudZ^2))
+    nsource = exp.(-0.5 .* ((pelt.r[k] .- surface.r .+ 0.5 .* shiftR) .^ 2 ./ (rcloudR .+ 0.25 .* shiftR) .^ 2 .+ (pelt.z[k] .- surface.z) .^ 2 ./ rcloudZ.^2))
 
     # need to normilize on the surface area under the gaussian shape
-     nsource /= (2 * π) ^ 2 * (rcloudR + 0.25 * shiftR) * (pelt.r[k] + 0.5 * shiftR) * rcloudZ
-   
-    nsource *= pelt.ablation_rate[k] 
+    nsource ./= ((2 * π) ^ 2 * (rcloudR + 0.25 * shiftR) * (pelt.r[k] + 0.5 * shiftR) * rcloudZ)
+    nsource .*= pelt.ablation_rate[k] 
 
-
-    # ----------itegrate over flux surface
-
-    #nsource *=dt # from input ????
-
-    # the total source should go to dd source?
-
- return nsource
+    return IMAS.flux_surface_avg(nsource, surface)
 end
 
-# pellet radius function calculates the radius of the pellet based on eq(1) and eq(3) from the paper ... by solving the ODE equation
 
-function pellet_radius!(pelt::Pellet1)
+function ablate!(eqt::IMAS.equilibrium__time_slice, pelt::Pellet1, surfaces::Vector{IMAS.FluxSurface})
 
-    constA=0.2  # take all values which are constants from eq (1) and eq(3)
-    f(u, p, t)=u^2*1.01
-    tspan=(pelt.time[1], pelt.time[end])
-    dt=pelt.time[2]-pelt.time[1]
-    #tspan=(0.0, 1.0)
-    u0=pelt.radius[1]
-    prob = ODEProblem(f, u0, tspan)
-    sol = solve(prob, Tsit5(), reltol = 1e-8, abstol = 1e-8, saveat=dt)
-    
-    pelt.radius = sol[:]
-    return pelt
-end
+    pellet_source = zeros(length(pelt.time),length(surfaces))
+    rho_source = IMAS.interp1d(eqt.profiles_1d.psi, eqt.profiles_1d.rho_tor_norm).([surface.psi for surface in surfaces])
+    @show length(pellet_source)
 
-function ablate!(pelt::Pellet1)
+
     for k in 2:length(pelt.time)
+        dt = pelt.time[k] - pelt.time[k-1]
         pelt.t = pelt.time[k]
-        pelt.radius[k] = pelt.radius[k-1]
-        if pelt.radius[k] > 0.0 && pelt.ρ[k] < 1.0
+        
 
-            pelt.radius[k] += dr_dt(pelt, k)[1] 
+        if pelt.radius[k-1] == 0.0 || pelt.ρ[k] > 1.0
+            pelt.radius[k] = pelt.radius[k-1]
+
+        else
+            pelt.radius[k] = pelt.radius[k-1] + dr_dt(pelt, k).radius_variation * dt
             
-            pelt.ablation_rate[k] = dr_dt(pelt, k)[2]
-           
-            if pelt.radius[k] < 0.0
-                pelt.radius[k] = 0.0
+            pelt.ablation_rate[k] = dr_dt(pelt, k).ablation_rate * dt
+
+            
+            for (ks, surface) in enumerate(surfaces)
+                tmp = pellet_density(pelt, surface, k)
+                pellet_source[k,ks] += tmp
             end
+          
+       
+         
         end
+    pelt.density_source = pellet_source
     end
-    return pelt
+
+    return 
 end
 
 
@@ -278,25 +278,20 @@ end
 function run_pam(dd::IMAS.dd, inputs)
     eqt = dd.equilibrium.time_slice[]
     cp1d = dd.core_profiles.profiles_1d[]
-    # Bt = eqt.global_quantities.magnetic_axis.b_field_tor
-    # ### Bt_exp?????????
-    # Bt_exp = 1.0
-
+   
 
     time = collect(range(inputs.t0, inputs.tf, step=inputs.dt))
 
-    pellet = Pellet1(dd.pellets.time_slice[].pellet[1], eqt, cp1d, time)
+    surfaces = IMAS.trace_surfaces(eqt, IMAS.first_wall(dd.wall)...)
 
-    #ablate!(pellet)
-    pellet_radius!(pellet)
+    pellet = Pellet1(dd.pellets.time_slice[].pellet[1], eqt, cp1d, time, surfaces)
 
+    pellet_source = ablate!(eqt, pellet, surfaces)
+
+  
+
+   
     return pellet
-
-
-
-
-
-
 end
 
 end
