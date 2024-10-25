@@ -23,7 +23,7 @@ mutable struct Pellet1{A,T, N}
     properties::IMAS.pellets__time_slice___pellet
     time::A
     t::T
-    Bt::A
+    Bt::T
     r::A
     z::A
     x::A
@@ -53,8 +53,7 @@ function Pellet1(pelt::IMAS.pellets__time_slice___pellet, eqt::IMAS.equilibrium_
     Y2 = R2 * sin(ϕ2)
 
     starting_position = [X1, Y1, Z1]
-    dist = sqrt((X2 - X1)^2 + (Y2 - Y1)^2 + (Z2 - Z1)^2)
-    velocity_vector = [X2 - X1, Y2 - Y1, Z2 - Z1] .* pelt.velocity_initial ./(dist)
+    velocity_vector = [X2 - X1, Y2 - Y1, Z2 - Z1] .* pelt.velocity_initial
 
     # trajectory for all time steps
     x, y, z = pellet_position(starting_position, velocity_vector, time, time[1])
@@ -68,11 +67,11 @@ function Pellet1(pelt::IMAS.pellets__time_slice___pellet, eqt::IMAS.equilibrium_
     if (rho_start < 1)
         error("Pellet1 starting inside plasma at rho = $rho_start")
     end
-    
-    Bt = abs(eqt.global_quantities.magnetic_axis.b_field_tor) .* eqt.global_quantities.magnetic_axis.r ./r
+
+    Bt = eqt.global_quantities.magnetic_axis.b_field_tor
     # get plasma profiles in rho coordinates and set to zero outside of the plasma
     ρ = RHO_interpolant.(r, z)
-    ne =  IMAS.interp1d(cp1d.grid.rho_tor_norm, cp1d.electrons.density).(ρ)
+    ne = IMAS.interp1d(cp1d.grid.rho_tor_norm, cp1d.electrons.density).(ρ)
     ne[ρ.>1.0] .= 0.0
     Te = IMAS.interp1d(cp1d.grid.rho_tor_norm, cp1d.electrons.temperature).(ρ)
     Te[ρ.>1.0] .= 0.0
@@ -143,8 +142,8 @@ function dr_dt(pelt::Pellet1, k::Int)
     end
     A_mean=sum(fractions.*A)
     @assert sum(fractions) == 1.0 "Species fractions dont sum up to 1.0"
-    Bexp=39*(2/pelt.Bt[k])#^0.35  #scaling of the magnetic field 
-    #Bexp=39*(pelt.Bt[k]/2)
+    Bexp=39*(2/pelt.Bt)^0.35  #scaling of the magnetic field 
+    
     # ablation model for the DT pellet
     if  ("D" in species_list) & ("T" in species_list)       
                
@@ -160,35 +159,21 @@ function dr_dt(pelt::Pellet1, k::Int)
          
        end
        # according equation #1 in J.McClenaghan at al Nucl.Fusion 63 (2023) 036015 (two coefficients are missing) and normalization to FUSE units
-       #G=Bexp*(A_mean/AD)^(2/3)*(1e+2*pelt.radius[k]/0.2)^(4/3)*(pelt.Te[k]*1e-3/2)^(5/3)*(pelt.ne[k]*1e-20)^(1/3)  #[g/s]
-       
+       G=Bexp*(A_mean/AD)^(2/3)*(1e+2*pelt.radius[k]/0.2)^(4/3)*(pelt.Te[k]*1e-3/2)^(5/3)*(pelt.ne[k]*1e-20)^(1/3)  #[g/s]
        ρ_zero = (1 - FD + FD * AD / AT) * ((1 - FD) / pellet_mass_density("T") + (FD * AD / AT) /pellet_mass_density("D"))^(-1) #[g cm^-3]
+       dr_dt =  - G / (4 * pi * ρ_zero * (pelt.radius[k]*1e+2)^2) #[cm/s]
        
-       # for the omfit validation
-       #----------------------------------------------------------------------
-       Bt_exp=0.0
-       Bt=pelt.Bt[k]
-       Wratio=(1-FD)*AT/AD+FD
-       c0 = 8.358 * Wratio^0.6667 * (abs(Bt) / 2.0) ^ Bt_exp
-       dr_dt=-c0/ρ_zero*(pelt.Te[k]*1e-3)^(1.6667)*(pelt.ne[k]*1e-20)^(0.3333)/(pelt.radius[k]*1e2)^0.6667
-       G = -dr_dt * (4 * π * ρ_zero * (pelt.radius[k]*1e2)^2)
-       G *= 6.022e23*FD/A_mean
-       
-       #-----------------------------------------------------------------------------------------------------
-      
-       #dr_dt =  - G / (4 * pi * ρ_zero * (pelt.radius[k]*1e+2)^2) #[cm/s]
-      
     else
       println("No ablation model is implemented for such combination of species")
     end
-   
+    
     # normilize return variables to make in standart FUSE usnits
-   return (radius_variation=dr_dt*1e-2, ablation_rate=G)   
+   return (radius_variation=dr_dt*1e-2, ablation_rate=G*1e-3)   
 end
 
 function pellet_density(pelt::Pellet1, surface::IMAS.FluxSurface, k::Int)
     # calculations of the pellet cloud size
-    cloudFactor = 1
+    cloudFactor = 0.1
     cloudFactorR=cloudFactor
     cloudFactorZ=cloudFactor
     
@@ -202,8 +187,8 @@ function pellet_density(pelt::Pellet1, surface::IMAS.FluxSurface, k::Int)
 
     # need to normilize on the surface area under the gaussian shape
     nsource ./= ((2 * π) ^ 2 * (rcloudR + 0.25 * shiftR) * (pelt.r[k] + 0.5 * shiftR) * rcloudZ)
-    nsource .*= pelt.ablation_rate[k]
-    @show nsource
+    nsource .*= pelt.ablation_rate[k] 
+
     return IMAS.flux_surface_avg(nsource, surface)
 end
 
@@ -225,12 +210,12 @@ function ablate!(eqt::IMAS.equilibrium__time_slice, pelt::Pellet1, surfaces::Vec
         else
             pelt.radius[k] = pelt.radius[k-1] + dr_dt(pelt, k).radius_variation * dt
        
-            pelt.ablation_rate[k] = dr_dt(pelt, k).ablation_rate             
+            pelt.ablation_rate[k] = dr_dt(pelt, k).ablation_rate 
+
             
             for (ks, surface) in enumerate(surfaces)
                 tmp = pellet_density(pelt, surface, k)
-                pellet_source[k,ks] += tmp*dt
-
+                pellet_source[k,ks] += tmp
             end
           
        
