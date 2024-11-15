@@ -2,10 +2,10 @@ module PAM
 
 import IMAS
 using Plots
-using DifferentialEquations
+#using DifferentialEquations
 using Statistics
-using PhysicalConstants.CODATA2018  # for drift model
-import PhysicalConstants.CODATA2018: μ_0, m_p, e
+#using PhysicalConstants.CODATA2018  # for drift model
+#import PhysicalConstants.CODATA2018: μ_0, m_p, e
 
 
 function pellet_position(starting_position::Vector{Float64}, velocity_vector::Vector{Float64}, time::AbstractVector, tinj::Float64)
@@ -45,7 +45,7 @@ mutable struct Pellet1{A,T, N, S, B, X}
 end
 
 
-function Pellet1(pelt::IMAS.pellets__time_slice___pellet, eqt::IMAS.equilibrium__time_slice, cp1d::IMAS.core_profiles__profiles_1d, time::Vector{Float64}, surfaces::Vector{IMAS.FluxSurface}, drift_model::String, BtDependance::Bool )
+function Pellet1(pelt::IMAS.pellets__time_slice___pellet, eqt::IMAS.equilibrium__time_slice, cp1d::IMAS.core_profiles__profiles_1d, time::Vector{Float64}, surfaces::Vector{IMAS.FluxSurface}, drift_model::Symbol, BtDependance::Bool )
     # coordinates of the pellet
     # first point
     R1 = pelt.path_geometry.first_point.r
@@ -99,7 +99,7 @@ function Pellet1(pelt::IMAS.pellets__time_slice___pellet, eqt::IMAS.equilibrium_
 end
 
 """
-get_ilayer: This function returns the layer index based on current pellet radius and thikness radii of the pellet radii.
+get_ilayer: This function returns the layer index based on current pellet radius and thikness of the pellet radii.
 """
 
 function get_ilayer(pelt::Pellet1,k::Int) 
@@ -129,15 +129,16 @@ end
 
 
 function drift!(pelt::Pellet1, eqt::IMAS.equilibrium__time_slice, k::Int)
-    # implementation of Park's analytical model
+    
     Raxis=eqt.global_quantities.magnetic_axis.r
     Zaxis=eqt.global_quantities.magnetic_axis.z
-    if pelt.drift_model == "Parks"
+    if pelt.drift_model == :Parks
         mi=m_p*2
-        T0=2.0  #?????? from OMFIT. why? eV, temperature at the pellet surface (channel entrance)
-
-        c_perp=0.2 #????? from OMFIT input file, why?????
+        T0=2.0    # eV, temperature at the pellet surface (channel entrance)
         M0 = 0.2  # Mach number at the channel entrance, from 2007 Roman's paper, in 2000 paper M0=0.8
+        lamda_en = 2 * pelt.Te[k] / 7.5  # eV,cm units are used
+        c_perp=0.2 #????? from OMFIT input file, why?????
+        
         # from OMFIT
         pfact_exp = 1.69423774
         Sigma0_exp = 0.85
@@ -161,8 +162,8 @@ function drift!(pelt::Pellet1, eqt::IMAS.equilibrium__time_slice, k::Int)
         pe=pelt.Te[k]*pelt.ne[k]*e1
  
         dr_drift=0.0
-        println("Tried to implement but the OMFIT code is messy and unclear")
-    elseif pelt.drift_model=="HPI2"
+        println("Implementation in progress")
+    elseif pelt.drift_model== :HPI2
         c1 = 0.116
         c2 = 0.120
         c3 = 0.368
@@ -178,10 +179,10 @@ function drift!(pelt::Pellet1, eqt::IMAS.equilibrium__time_slice, k::Int)
         c13 = -0.204
        
        vp=sqrt(pelt.velocity_vector[1]^2+pelt.velocity_vector[2]^2+pelt.velocity_vector[3]^2)
-       @show vp
+       
        rp=pelt.radius[1]*1e3  # from m to mm
-       ne0=pelt.ne[k]*1e-1 #to 1e19 m^-3
-       te0=pelt.Te[k]*1e-3
+       ne0=pelt.ne[1]*1e-1 #to 1e19 m^-3
+       te0=pelt.Te[1]*1e-3
       
        R0=eqt.global_quantities.magnetic_axis.r
        B0=eqt.global_quantities.magnetic_axis.b_field_tor
@@ -190,10 +191,14 @@ function drift!(pelt::Pellet1, eqt::IMAS.equilibrium__time_slice, k::Int)
        alpha=atan(pelt.z[k]-Zaxis, pelt.r[k]-Raxis)
 
 
-       dr_drift=c1*(vp/100)^c2 *rp^c3*ne0^c4*te0^c5 #*(abs(abs(alpha)-c6)+c8)^c7*(1-pelt.ρ[k])^c9*a0^c10*R0^c11*B0^c12*kappa^c13
-       pelt.R_drift[k]=dr_drift
+       dr_drift=c1*(vp/100)^c2 *rp^c3*ne0^c4*te0^c5 *(abs(abs(alpha)-c6)+c8)^c7*(1-pelt.ρ[k])^c9*a0^c10*R0^c11*B0^c12*kappa^c13
+       
     
+    elseif pelt.drift_model== :none
+        dr_drift = 0.0
+
     end
+    pelt.R_drift[k]=dr_drift
     return 
 end
 
@@ -340,7 +345,7 @@ end
     end
 end
 
-function run_pam(dd::IMAS.dd, inputs)
+function run_PAM(dd::IMAS.dd, inputs)
     eqt = dd.equilibrium.time_slice[]
     cp1d = dd.core_profiles.profiles_1d[]
     # generate time array for the simulations: t0 start of the pellet modeling, tf - end of the simulations)
