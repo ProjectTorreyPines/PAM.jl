@@ -2,10 +2,9 @@ module PAM
 
 import IMAS
 using Plots
-#using DifferentialEquations
+using DifferentialEquations
 using Statistics
-#using PhysicalConstants.CODATA2018  # for drift model
-#import PhysicalConstants.CODATA2018: μ_0, m_p, e
+
 
 
 function pellet_position(starting_position::Vector{Float64}, velocity_vector::Vector{Float64}, time::AbstractVector, tinj::Float64)
@@ -63,7 +62,7 @@ function Pellet1(pelt::IMAS.pellets__time_slice___pellet, eqt::IMAS.equilibrium_
     starting_position = [X1, Y1, Z1]
     dist = sqrt((X2 - X1)^2 + (Y2 - Y1)^2 + (Z2 - Z1)^2)
     velocity_vector = [X2 - X1, Y2 - Y1, Z2 - Z1] .* pelt.velocity_initial ./(dist)
-
+   
     # trajectory for all time steps
     x, y, z = pellet_position(starting_position, velocity_vector, time, time[1])
     r, z = PAM.projected_coordinate(x, y, z)
@@ -73,6 +72,7 @@ function Pellet1(pelt::IMAS.pellets__time_slice___pellet, eqt::IMAS.equilibrium_
 
     # check the pellet position
     rho_start = RHO_interpolant.(R1, Z1)
+    
     if (rho_start < 1)
         error("Pellet1 starting inside plasma at rho = $rho_start")
     end
@@ -128,41 +128,143 @@ end
 
 
 
-function drift!(pelt::Pellet1, eqt::IMAS.equilibrium__time_slice, k::Int)
+function drift!(pelt::Pellet1, eqt::IMAS.equilibrium__time_slice, cp1d::IMAS.core_profiles__profiles_1d,  k::Int)
     
+
     Raxis=eqt.global_quantities.magnetic_axis.r
     Zaxis=eqt.global_quantities.magnetic_axis.z
+    _, _, RHO_interpolant = IMAS.ρ_interpolant(eqt)
     if pelt.drift_model == :Parks
+       
+       # ---- constants ----------------
+        m_p = 1.67262192369e-27
+        e = 1.602176634e-19
+        mu_0 = 1.25663706212e-6
+
         mi=m_p*2
         T0=2.0    # eV, temperature at the pellet surface (channel entrance)
-        M0 = 0.2  # Mach number at the channel entrance, from 2007 Roman's paper, in 2000 paper M0=0.8
-        lamda_en = 2 * pelt.Te[k] / 7.5  # eV,cm units are used
-        c_perp=0.2 #????? from OMFIT input file, why?????
+        M0 = 1  # Mach number at the channel entrance, from 2007 Roman's paper, in 2000 paper M0=0.8
+        c_perp=0.02 # pellet cloud width factor taken as a constant from OMFIT
+       #---------------------------------------------------------
+        Ca_inf=pelt.Bt[k]/sqrt(mu_0*pelt.ne[k]*mi)
+        C_s=sqrt(e*T0/mi)
         
-        # from OMFIT
-        pfact_exp = 1.69423774
-        Sigma0_exp = 0.85
         if pelt.Btdep
-            attenuation_factor = pelt.Bt^0.7
+            attenuation_factor = pelt.Bt[k]^0.7
         else
             attenuation_factor = 2.0^0.7
         end
-        vA=pelt.Bt/sqrt(μ_0*pelt.ne[k]*mi)
-        vS=sqrt(e*T0/mi)
+       
         rperp_calc=c_perp*sqrt(pelt.ablation_rate[k]/(pelt.ne[k]*pelt.Te[k]^1.5*attenuation_factor))
+        
         rperp = max(pelt.radius[1], rperp_calc)
-        Lc = sqrt(Raxis*rperp)
-        loglam=23.5-log(pelt.ne[k]*1e-6^0.5/pelt.Te[k]^(5/6))
+        
+        Lc0 = sqrt(Raxis*rperp)
+       
+        
+
+        pfact_exp = 1.69423774
+        Sigma0_exp = 0.85
+
+
+        loglam=23.5-log((pelt.ne[k]*1e-6)^0.5/pelt.Te[k]^(5/6))
         tau_inf = 2.248882e16*pelt.Te[k]^2/loglam
         a1=0.01*M0
-        n0_0= pelt.ablation_rate[k]/(2*π*rperp^2*vS)/(a1*(T0/pelt.ne[k]/pelt.Te[k])^(pfact_exp)*(Lc/tau_inf)^(Sigma0_exp))
+        
+        n0_0= pelt.ablation_rate[k]/(2*π*rperp^2*C_s)/(a1*(T0/pelt.ne[k]/pelt.Te[k])^(pfact_exp)*(Lc0/tau_inf)^(Sigma0_exp))
+               
         n0=n0_0^(1/(1+pfact_exp+Sigma0_exp))
-        pressure_factor=T0*n0/max(pelt.Te[k]*pelt.ne[k], 1e-10)
-        Sigma0=n0*Lc/tau_inf
-        pe=pelt.Te[k]*pelt.ne[k]*e1
- 
-        dr_drift=0.0
-        println("Implementation in progress")
+                    
+        Sigma0=n0*Lc0/tau_inf
+        pe=pelt.Te[k]*pelt.ne[k]*e
+     
+        pe_rho = e.*cp1d.electrons.density.*cp1d.electrons.temperature
+       
+
+        function vRdot!(du, u, p, t)
+          
+          pfact_exp = 1.69423774
+          Sigma0_exp = 0.85  
+          
+          R0 = u[1]
+         
+          vR0 = u[2]  
+                     
+          Z0 = pelt.z[k]
+         
+          tbar = t/Lc0*C_s
+          
+          rho_cloud = RHO_interpolant.(R0, Z0)[1]
+          
+          # probably this should be a callback conditions, but need to undestand how to combine two conditions with save position
+          if rho_cloud > 1.3   #In OMFIT this is ==2, but the rho_interpolation in julia and OMFIT is different at r > 1.3
+             
+            du[1]=0
+            du[2]=0
+          
+          else
+            
+           peinf =  IMAS.interp1d(cp1d.grid.rho_tor_norm, pe_rho).(rho_cloud)
+            
+             
+           peinf = min(e*n0*T0, max(pe, peinf)) 
+             
+           Pfact = e*n0*T0/peinf
+             
+
+
+           a1 = 0.52296257 / Lc0/(Sigma0^Sigma0_exp*Pfact^pfact_exp)
+           a2 = 17.19090852
+           Lc = 1.0+(Sigma0^Sigma0_exp*Pfact^pfact_exp)*tbar
+             
+           
+           PSI = a1*(exp(-a2*(Lc-Lc0)/Lc0/Pfact^(2*pfact_exp)/Sigma0^(2*Sigma0_exp))-1/Pfact)*Lc/Lc0+(1-a1)*(1-1/Pfact)
+           PSI=max(0.0, PSI)
+           u[3] = PSI
+                   
+               
+           du[1]=vR0
+                 
+           du[2] = -2 * pelt.Bt[k]^2/Ca_inf/mu_0  * vR0 /(mi*n0*Lc0) +2/R0*PSI*(C_s^2/Lc0)
+            
+          
+
+          end
+              
+            
+        end
+          
+              
+       t_eval = pelt.time[k:end] .- pelt.time[k]      
+       
+        t_span = [0, (t_eval[end]-t_eval[1])]
+      
+        
+        
+        condition(u, t, integrator) = u[3] == 0.0
+        function affect!(integrator) 
+                        
+            integrator.u[2] = 0.0
+            integrator.u[1] = 0.0
+            integrator.u[3] = 0.1
+           
+           
+            
+        end
+
+
+        
+        cb = ContinuousCallback(condition, affect!)       
+      
+        u0 = [pelt.r[k],pelt.velocity_vector[1], 0.1]
+   
+        prob = ODEProblem(vRdot!, u0, t_span)
+       
+        sol = solve(prob, RadauIIA5(autodiff=false),callback=cb)      
+       
+       
+        dr_drift= sol[1,end]-pelt.r[k]
+        
     elseif pelt.drift_model== :HPI2
         c1 = 0.116
         c2 = 0.120
@@ -192,17 +294,18 @@ function drift!(pelt::Pellet1, eqt::IMAS.equilibrium__time_slice, k::Int)
 
 
        dr_drift=c1*(vp/100)^c2 *rp^c3*ne0^c4*te0^c5 *(abs(abs(alpha)-c6)+c8)^c7*(1-pelt.ρ[k])^c9*a0^c10*R0^c11*B0^c12*kappa^c13
-       
+   
     
     elseif pelt.drift_model== :none
         dr_drift = 0.0
 
     end
-    pelt.R_drift[k]=dr_drift
-    return 
+    
+    
+    return dr_drift
 end
 
-function dr_dt(pelt::Pellet1, k::Int)
+function dr_dt(pelt::Pellet1, k::Int )
     # model for each layer, now works for DT only
     ilayer= get_ilayer(pelt, k)
     layer = pelt.properties.layer[ilayer]
@@ -252,21 +355,23 @@ function dr_dt(pelt::Pellet1, k::Int)
        Bt=pelt.Bt[k]
        Wratio=(1-FD)*AT/AD+FD
        c0 = 8.358 * Wratio^0.6667 * (abs(Bt) / 2.0) ^ Bt_exp
+      
        dr_dt=-c0/ρ_zero*(pelt.Te[k]*1e-3)^(1.6667)*(pelt.ne[k]*1e-20)^(0.3333)/(pelt.radius[k]*1e2)^0.6667
+       
        G = -dr_dt * (4 * π * ρ_zero * (pelt.radius[k]*1e2)^2)
        G *= 6.022e23*FD/A_mean
-   
+       
       
                   
     else
       println("No ablation model is implemented for such combination of species")
     end
    
-    # normilize return variables to make in standart FUSE usnits
-   return (radius_variation=dr_dt*1e-2, ablation_rate=G)   
+    # normilize return variables to make in standart FUSE usnits, multiply G on 2 to take into account D and T
+   return (radius_variation=dr_dt*1e-2, ablation_rate=G*2)   
 end
 
-function pellet_density(pelt::Pellet1, eqt::IMAS.equilibrium__time_slice, surface::IMAS.FluxSurface, k::Int)
+function pellet_density(pelt::Pellet1, eqt::IMAS.equilibrium__time_slice, cp1d::IMAS.core_profiles__profiles_1d, surface::IMAS.FluxSurface, k::Int)
     # calculations of the pellet cloud size
     cloudFactor = 5
     cloudFactorR=cloudFactor
@@ -276,8 +381,8 @@ function pellet_density(pelt::Pellet1, eqt::IMAS.equilibrium__time_slice, surfac
     rcloudZ=pelt.radius[k]*cloudFactorZ
    
     #  update array with pellet drift due to ExB drift (would work only for HPI2 model now)
-    drift!(pelt, eqt, k)
     
+   
     # Assume density source as a 2D Gaussian function
     nsource = exp.(-0.5 .* ((pelt.r[k] .- surface.r .+ 0.5 .* pelt.R_drift[k]) .^ 2 ./ (rcloudR .+ 0.25 .* pelt.R_drift[k]) .^ 2 .+ (pelt.z[k] .- surface.z) .^ 2 ./ rcloudZ.^2))
 
@@ -291,7 +396,7 @@ function pellet_density(pelt::Pellet1, eqt::IMAS.equilibrium__time_slice, surfac
 end
 
 
-function ablate!(eqt::IMAS.equilibrium__time_slice, pelt::Pellet1, surfaces::Vector{IMAS.FluxSurface})
+function ablate!(eqt::IMAS.equilibrium__time_slice, cp1d::IMAS.core_profiles__profiles_1d, pelt::Pellet1, surfaces::Vector{IMAS.FluxSurface})
 
     pellet_source = zeros(length(pelt.time),length(surfaces))
     #rho_source = IMAS.interp1d(eqt.profiles_1d.psi, eqt.profiles_1d.rho_tor_norm).([surface.psi for surface in surfaces])
@@ -300,7 +405,7 @@ function ablate!(eqt::IMAS.equilibrium__time_slice, pelt::Pellet1, surfaces::Vec
 
     for k in 2:length(pelt.time)
         dt = pelt.time[k] - pelt.time[k-1]
-            
+         
 
         if pelt.radius[k-1] < 0.0 || pelt.ρ[k] > 1.0
             pelt.radius[k] = pelt.radius[k-1]
@@ -313,8 +418,10 @@ function ablate!(eqt::IMAS.equilibrium__time_slice, pelt::Pellet1, surfaces::Vec
             
             pelt.ablation_rate[k] = ablation_rate        
             
+            pelt.R_drift[k]=drift!(pelt, eqt, cp1d, k)
+
             for (ks, surface) in enumerate(surfaces)
-                tmp = pellet_density(pelt, eqt, surface, k)
+                tmp = pellet_density(pelt, eqt, cp1d, surface, k)
                
                 pellet_source[k,ks] += tmp*dt
 
@@ -352,15 +459,16 @@ function run_PAM(dd::IMAS.dd, inputs)
     time = collect(range(inputs.t0, inputs.tf, step=inputs.dt))
     
     # define flux surfaces, will be needed for the pellet source calculations
+  
     surfaces = IMAS.trace_surfaces(eqt, IMAS.first_wall(dd.wall)...)
+    
     drift_model=inputs.drift_model
     BtDependance=inputs.BtDependance
 
     # initialize the pellet structure 
     pellet = Pellet1(dd.pellets.time_slice[].pellet[1], eqt, cp1d, time, surfaces, drift_model, BtDependance)
     
-    ablate!(eqt, pellet, surfaces)
-    
+    ablate!(eqt,cp1d, pellet, surfaces)
    
     return pellet
 end
