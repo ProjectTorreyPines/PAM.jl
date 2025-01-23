@@ -10,7 +10,10 @@ IMASdd = "c5a45a97-b3f9-491c-b9a7-aa88c3bc0067"
 PhysicalConstants = "5ad8b20f-a522-5ce9-bfc9-ddf1d5bda6ab"
 Plots = "91a5bcdd-55d7-5caf-9e0b-520d859cae80"
 Statistics = "10745b16-79ce-11e8-11f9-7d13ad32a3b2"
+Sundials = "c3572dad-4567-51f8-b174-8c6c989267f4"
 
 [compat]
+DifferentialEquations = "7.14.0"
 IMAS = "1, 2, 3"
 PhysicalConstants = "0.2.3"
+Sundials = "4.26.1"
