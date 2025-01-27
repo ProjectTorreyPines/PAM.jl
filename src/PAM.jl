@@ -42,7 +42,7 @@ mutable struct Pellet1{A,T, N, S, B, X}
     density_source::N
     
 end
-dt
+
 
 function Pellet1(pelt::IMAS.pellets__time_slice___pellet, eqt::IMAS.equilibrium__time_slice, cp1d::IMAS.core_profiles__profiles_1d, time::Vector{Float64}, surfaces::Vector{IMAS.FluxSurface}, drift_model::Symbol, BtDependance::Bool )
     # coordinates of the pellet
@@ -329,12 +329,19 @@ function dr_dt!(pelt::Pellet1, k::Int)
          AD=A[1]
          AT=A[2]
          FD=fractions[1]
+         FT=fractions[2]
+         ZD=Z[1]
+         ZT=Z[2]
+
          
        else
          AD=A[2]
          AT=A[1]
          FD=fractions[2]
-         
+         FT=fractions[1]
+         ZD=Z[2]
+         ZT=Z[1]
+
        end
        # according equation #1 in J.McClenaghan at al Nucl.Fusion 63 (2023) 036015 (two coefficients are missing) and normalization to FUSE units
       
@@ -342,20 +349,124 @@ function dr_dt!(pelt::Pellet1, k::Int)
        ρ_zero = (1 - FD + FD * AD / AT) * ((1 - FD) / pellet_mass_density("T") + (FD * AD / AT) /pellet_mass_density("D"))^(-1) #[g cm^-3]
        
       
-       Bt=pelt.Bt[k]
+       
       
        Wratio=(1-FD)*AT/AD+FD
-       c0 = 8.358 * Wratio^0.6667 * (abs(Bt) / 2.0) ^ Bt_exp
+       c0 = 8.358 * Wratio^0.6667 * (abs(pelt.Bt[k]) / 2.0) ^ Bt_exp
        
        dr_dt=-c0/ρ_zero*(pelt.Te[k]*1e-3)^(1.6667)*(pelt.ne[k]*1e-20)^(0.3333)/(pelt.radius[k-1]*1e2)^0.6667
        
        pelt.radius[k] = max(0.0, pelt.radius[k-1] + dr_dt * 1e-2 * (pelt.time[k] - pelt.time[k-1]))
        G = -dr_dt * (4 * π * ρ_zero * (pelt.radius[k-1]*1e2)^2)
-     
-       G *= 6.022e23*FD/A_mean*2
-       pelt.ablation_rate[k] = G
+       
+
+       GD = G* 6.022e23*FD/A_mean*ZD
+       GT = G* 6.022e23*FT/A_mean*ZT
+
+       pelt.ablation_rate[k] = GT+GD
       
                   
+    
+    elseif ("Ne20" in species_list) & ("D" in species_list)       
+               
+        if species_list[1]=="Ne"
+          ANe=A[1]
+          AD=A[2]
+          FNe=fractions[1]
+          FD=fractions[2]
+          ZNe=Z[1]
+          ZD=Z[2]
+          
+        else
+          ANe=A[2]
+          AD=A[1]
+          FD=fractions[1]
+          FNe=fractions[2]
+          ZNe=Z[2]
+          ZD=Z[1]
+        end
+
+        Wratio = (1 - FD) * ANe / AD + FD
+        
+        ρ_zero = (1 - FD + FD * AD / ANe) * ((1 - FD) / pellet_mass_density("Ne") + (FD * AD / ANe) /pellet_mass_density("D"))^(-1) #[g cm^-3]
+     
+      
+        X = FD / (2 - FD)
+        AoX = 27.0 + tan(1.48 * X)
+    
+        c0 = AoX / (4 * π) * (abs(pelt.Bt[k]) / 2.0) ^ Bt_exp
+
+        dr_dt=-c0/ρ_zero*(pelt.Te[k]*1e-3)^(1.6667)*(pelt.ne[k]*1e-20)^(0.3333)/(pelt.radius[k-1]*1e2)^0.6667
+       
+        pelt.radius[k] = max(0.0, pelt.radius[k-1] + dr_dt * 1e-2 * (pelt.time[k] - pelt.time[k-1]))
+        G = -dr_dt * (4 * π * ρ_zero * (pelt.radius[k-1]*1e2)^2)
+      
+   
+        GD = G* 6.022e23*FD/A_mean*ZD
+        GNe = G* 6.022e23*FNe/A_mean*ZNe
+
+        pelt.ablation_rate[k] = GD+GNe
+      
+    elseif "C12" in species_list
+        
+        C0 = 8.146777e-9
+        AC = A[1]
+        ZC=Z[1]
+        gamma = 5.0 / 3.0
+
+        ZstarPlus1C = 2.86
+        Albedo = 23.920538030089528 * log(1 + 0.20137080524063228 * ZstarPlus1C)
+        flelectro = exp(-1.936)
+        fL = (1.0 - Albedo / 100) * flelectro
+
+        IstC = 60
+        e = 1.602176634e-19
+        if pelt.Te[k] > 30
+            Ttmp = pelt.Te[k]
+        else
+            Ttmp = 30
+        end
+        
+        loglamCSlow = log(2.0 * Ttmp / IstC * sqrt(2.718 * 2.0))
+       
+        BLamdaq = 1 / (ZC * loglamCSlow) * (4 / (2.5 + 2.2 * sqrt(ZstarPlus1C)))
+      
+        Gpr = C0*AC^(2.0/3.0)*(gamma-1)^(1.0/3.0)*(fL*pelt.ne[k]*1e-6)^(1.0/3.0)*(pelt.radius[k-1]*1e2)^(4.0/3.0)*(pelt.Te[k])^(11.0/6.0)*BLamdaq^(2.0 / 3.0)
+        
+
+        xiexp = 0.601
+        lamdaa = 0.0933979540623963
+        lamdab = -0.7127242270013098
+        lamdac = -0.2437544205933372
+        lamdad = -0.8534855445478313
+        av = 10.420403555938629 * (Ttmp / 2000.0)^ lamdaa
+        bv = 0.6879779829877795 * (Ttmp / 2000.0)^ lamdab
+        cv = 1.5870910225610804 * (Ttmp / 2000.0)^ lamdac
+        dv = 2.9695640286641840 * (Ttmp / 2000.0)^ lamdad
+        fugCG = 0.777686
+        CG = fugCG * av * log(1 + bv * (pelt.ne[k]*1e-20)^(2.0 / 3.0) * (pelt.radius[k-1]*1e2)^ (2.0 / 3.0))/ log(cv + dv * (pelt.ne[k]*1e-20)^(2.0 / 3.0) * (pelt.radius[k-1]*1e2)^ (2.0 / 3.0))
+        
+
+        G = xiexp * CG * Gpr * (2.0 / pelt.Bt[k]) ^ Bt_exp
+      
+        dr_dt = -G / (4.0 * π *  pellet_mass_density("C") * (pelt.radius[k-1]*1e2)^2)
+        pelt.radius[k] = max(0.0, pelt.radius[k-1] + dr_dt * 1e-2 * (pelt.time[k] - pelt.time[k-1]))
+       
+       
+        G = xiexp * CG * Gpr * (2.0 / pelt.Bt[k]) ^ Bt_exp
+      
+      
+   
+        GC = G*6.022e23/AC*ZC
+       
+        pelt.ablation_rate[k] = GC
+       
+       
+  
+
+
+
+
     else
       println("No ablation model is implemented for such combination of species")
     end
@@ -398,7 +509,7 @@ function ablate!(eqt::IMAS.equilibrium__time_slice, cp1d::IMAS.core_profiles__pr
        dt= pelt.time[k] - pelt.time[k-1]
          
       
-       if  pelt.ρ[k] > 1.0
+       if  pelt.ρ[k] > 1.0 && pelt.radius[k-1]>0
            pelt.radius[k] = pelt.radius[k-1]
       
        else
