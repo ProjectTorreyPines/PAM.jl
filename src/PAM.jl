@@ -3,7 +3,7 @@ module PAM
 import IMAS
 using Plots
 using DifferentialEquations
-#using Statistics
+using Interpolations
 #using Sundials
 
 
@@ -211,9 +211,7 @@ function drift!(pelt::Pellet1, eqt::IMAS.equilibrium__time_slice, cp1d::IMAS.cor
             peinf = min(e*n0*T0, max(pe, peinf)) 
              
             Pfact = e*n0*T0/peinf
-             
-
-
+            
             a1 = 0.52296257 / Lc0/(Sigma0^Sigma0_exp*Pfact^pfact_exp)
             a2 = 17.19090852
             Lc = 1.0+(Sigma0^Sigma0_exp*Pfact^pfact_exp)*tbar
@@ -243,10 +241,8 @@ function drift!(pelt::Pellet1, eqt::IMAS.equilibrium__time_slice, cp1d::IMAS.cor
         t_eval = pelt.time[k:end] .- pelt.time[k]      
        
         t_span = [0, (t_eval[end]-t_eval[1])]
-      
-        
-      
-      
+   
+          
         u0 = [pelt.r[k],pelt.velocity_vector[1]]
         
         prob = ODEProblem(vRdot!, u0, t_span)
@@ -296,9 +292,14 @@ function drift!(pelt::Pellet1, eqt::IMAS.equilibrium__time_slice, cp1d::IMAS.cor
 end
 
 function dr_dt!(pelt::Pellet1, k::Int)
-    # model for each layer, now works for DT only
+    
     ilayer= get_ilayer(pelt, k)
     layer = pelt.properties.layer[ilayer]
+
+    Te_func=linear_interpolation(pelt.time,pelt.Te)
+    ne_func=linear_interpolation(pelt.time,pelt.ne)
+    Bt_function=linear_interpolation(pelt.time,pelt.Bt)
+
 
     A = Float64[]
     Z = Float64[]
@@ -315,7 +316,7 @@ function dr_dt!(pelt::Pellet1, k::Int)
    
     end
     A_mean=sum(fractions.*A)
-    @assert sum(fractions) == 1.0 "Species fractions dont sum up to 1.0"
+    @assert sum(fractions) == 1.0 "Species fractions don't sum up to 1.0"
     if pelt.Btdep
       Bt_exp=-0.35  #scaling of the magnetic field 
     else 
@@ -347,17 +348,42 @@ function dr_dt!(pelt::Pellet1, k::Int)
       
        
        ρ_zero = (1 - FD + FD * AD / AT) * ((1 - FD) / pellet_mass_density("T") + (FD * AD / AT) /pellet_mass_density("D"))^(-1) #[g cm^-3]
-       
+             
+      
+       Wratio=(1-FD)*AT/AD+FD     
+                   
       
        
+       function dr_dt_DT(du, u, p, t)   
+          
+           c0 = 8.358 * Wratio^0.6667 * (abs(Bt_function(t)) / 2.0) ^ Bt_exp
+   
+           if u[1] < 0
+              u[1] = 0                 
+             
+           else
+#
+              du[1]=(-c0/ρ_zero*(Te_func(t)*1e-3)^(1.6667)*(ne_func(t)*1e-20)^(0.3333)/(u[1]*1e2)^0.6667)*1e-2
+             
+           end
+       end
+         
+       
+       t_span = [pelt.time[k-1], pelt.time[k]]          
+         
+       u0 = [pelt.radius[k-1]]
+       
+       prob = ODEProblem(dr_dt_DT, u0, t_span)
       
-       Wratio=(1-FD)*AT/AD+FD
+       sol = solve(prob, Tsit5(),verbose=false)                   
+             
+       
+       pelt.radius[k] =sol[1, end]  
+       
+       #------- ablation rate calculations ---------------------------------
        c0 = 8.358 * Wratio^0.6667 * (abs(pelt.Bt[k]) / 2.0) ^ Bt_exp
-       
-       dr_dt=-c0/ρ_zero*(pelt.Te[k]*1e-3)^(1.6667)*(pelt.ne[k]*1e-20)^(0.3333)/(pelt.radius[k-1]*1e2)^0.6667
-       
-       pelt.radius[k] = max(0.0, pelt.radius[k-1] + dr_dt * 1e-2 * (pelt.time[k] - pelt.time[k-1]))
-       G = -dr_dt * (4 * π * ρ_zero * (pelt.radius[k-1]*1e2)^2)
+       drdt=-c0/ρ_zero*(pelt.Te[k]*1e-3)^(1.6667)*(pelt.ne[k]*1e-20)^(0.3333)/(pelt.radius[k]*1e2)^0.6667
+       G = -drdt * (4 * π * ρ_zero * (pelt.radius[k]*1e2)^2)
        
 
        GD = G* 6.022e23*FD/A_mean*ZD
@@ -394,11 +420,40 @@ function dr_dt!(pelt::Pellet1, k::Int)
         X = FD / (2 - FD)
         AoX = 27.0 + tan(1.48 * X)
     
-        c0 = AoX / (4 * π) * (abs(pelt.Bt[k]) / 2.0) ^ Bt_exp
 
-        dr_dt=-c0/ρ_zero*(pelt.Te[k]*1e-3)^(1.6667)*(pelt.ne[k]*1e-20)^(0.3333)/(pelt.radius[k-1]*1e2)^0.6667
+        function dr_dt_DNe(du, u, p, t)   
+          
+            
+    
+            if u[1] < 0
+               u[1] = 0                 
+              
+            else
+ #             
+               c0 = AoX / (4 * π) * (abs(Bt_function(t)) / 2.0) ^ Bt_exp
+
+             
+               du[1]=(-c0/ρ_zero*(Te_func(t)*1e-3)^(1.6667)*(ne_func(t)*1e-20)^(0.3333)/(u[1]*1e2)^0.6667)*1e-2
+              
+            end
+        end
+          
+        
+        t_span = [pelt.time[k-1], pelt.time[k]]          
+          
+        u0 = [pelt.radius[k-1]]
+        
+        prob = ODEProblem(dr_dt_DNe, u0, t_span)
        
-        pelt.radius[k] = max(0.0, pelt.radius[k-1] + dr_dt * 1e-2 * (pelt.time[k] - pelt.time[k-1]))
+        sol = solve(prob, Tsit5(),verbose=false)                   
+              
+        
+        pelt.radius[k] =sol[1, end]    
+
+
+        #---- ablation rate calculation ----------------------------------------------
+       
+        dr_dt=-c0/ρ_zero*(pelt.Te[k]*1e-3)^(1.6667)*(pelt.ne[k]*1e-20)^(0.3333)/(pelt.radius[k]*1e2)^0.6667
         G = -dr_dt * (4 * π * ρ_zero * (pelt.radius[k-1]*1e2)^2)
       
    
@@ -418,54 +473,95 @@ function dr_dt!(pelt::Pellet1, k::Int)
         Albedo = 23.920538030089528 * log(1 + 0.20137080524063228 * ZstarPlus1C)
         flelectro = exp(-1.936)
         fL = (1.0 - Albedo / 100) * flelectro
-
+       
         IstC = 60
-        e = 1.602176634e-19
+       
+        xiexp = 0.601
+        lamdaa = 0.0933979540623963
+        lamdab = -0.7127242270013098
+        lamdac = -0.2437544205933372
+        lamdad = -0.8534855445478313
+
+      
+        function dr_dt_C(du, u, p, t)   
+          
+            
+    
+        if u[1] < 0
+          u[1] = 0                 
+              
+        else
+
+         if Te_func(t) > 30
+            Ttmp = Te_func(t)
+         else
+            Ttmp = 30
+         end
+        
+         loglamCSlow = log(2.0 * Ttmp / IstC * sqrt(2.718 * 2.0))
+       
+         BLamdaq = 1 / (ZC * loglamCSlow) * (4 / (2.5 + 2.2 * sqrt(ZstarPlus1C)))
+      
+             
+         av = 10.420403555938629 * (Ttmp / 2000.0)^ lamdaa
+         bv = 0.6879779829877795 * (Ttmp / 2000.0)^ lamdab
+         cv = 1.5870910225610804 * (Ttmp / 2000.0)^ lamdac
+         dv = 2.9695640286641840 * (Ttmp / 2000.0)^ lamdad
+         fugCG = 0.777686
+         Gpr = C0*AC^(2.0/3.0)*(gamma-1)^(1.0/3.0)*(fL*ne_func(t)*1e-6)^(1.0/3.0)*(u[1]*1e2)^(4.0/3.0)*(Te_func(t))^(11.0/6.0)*BLamdaq^(2.0 / 3.0)
+        
+         CG = fugCG * av * log(1 + bv * (ne_func(t)*1e-20)^(2.0 / 3.0) * (u[1]*1e2)^ (2.0 / 3.0))/ log(cv + dv * (ne_func(t)*1e-20)^(2.0 / 3.0) * (u[1]*1e2)^ (2.0 / 3.0))
+        
+
+         G = xiexp * CG * Gpr * (2.0 / Bt_function(t)) ^ Bt_exp
+      
+         du[1] = (-G / (4.0 * π *  pellet_mass_density("C") * (u[1]*1e2)^2))*1e-2
+         end
+        end
+
+        t_span = [pelt.time[k-1], pelt.time[k]]          
+          
+        u0 = [pelt.radius[k-1]]
+        
+        prob = ODEProblem(dr_dt_C, u0, t_span)
+       
+        sol = solve(prob, Tsit5(),verbose=false)                   
+              
+        
+        pelt.radius[k] =sol[1, end]    
+
+
+        #---ablation calculations --------------------------
+
+       
         if pelt.Te[k] > 30
             Ttmp = pelt.Te[k]
         else
             Ttmp = 30
         end
         
-        loglamCSlow = log(2.0 * Ttmp / IstC * sqrt(2.718 * 2.0))
+         loglamCSlow = log(2.0 * Ttmp / IstC * sqrt(2.718 * 2.0))
        
-        BLamdaq = 1 / (ZC * loglamCSlow) * (4 / (2.5 + 2.2 * sqrt(ZstarPlus1C)))
+         BLamdaq = 1 / (ZC * loglamCSlow) * (4 / (2.5 + 2.2 * sqrt(ZstarPlus1C)))
       
-        Gpr = C0*AC^(2.0/3.0)*(gamma-1)^(1.0/3.0)*(fL*pelt.ne[k]*1e-6)^(1.0/3.0)*(pelt.radius[k-1]*1e2)^(4.0/3.0)*(pelt.Te[k])^(11.0/6.0)*BLamdaq^(2.0 / 3.0)
+             
+         av = 10.420403555938629 * (Ttmp / 2000.0)^ lamdaa
+         bv = 0.6879779829877795 * (Ttmp / 2000.0)^ lamdab
+         cv = 1.5870910225610804 * (Ttmp / 2000.0)^ lamdac
+         dv = 2.9695640286641840 * (Ttmp / 2000.0)^ lamdad
+         fugCG = 0.777686
         
-
-        xiexp = 0.601
-        lamdaa = 0.0933979540623963
-        lamdab = -0.7127242270013098
-        lamdac = -0.2437544205933372
-        lamdad = -0.8534855445478313
-        av = 10.420403555938629 * (Ttmp / 2000.0)^ lamdaa
-        bv = 0.6879779829877795 * (Ttmp / 2000.0)^ lamdab
-        cv = 1.5870910225610804 * (Ttmp / 2000.0)^ lamdac
-        dv = 2.9695640286641840 * (Ttmp / 2000.0)^ lamdad
-        fugCG = 0.777686
-        CG = fugCG * av * log(1 + bv * (pelt.ne[k]*1e-20)^(2.0 / 3.0) * (pelt.radius[k-1]*1e2)^ (2.0 / 3.0))/ log(cv + dv * (pelt.ne[k]*1e-20)^(2.0 / 3.0) * (pelt.radius[k-1]*1e2)^ (2.0 / 3.0))
+       
+        
+        Gpr = C0*AC^(2.0/3.0)*(gamma-1)^(1.0/3.0)*(fL*pelt.ne[k]*1e-6)^(1.0/3.0)*(pelt.radius[k]*1e2)^(4.0/3.0)*(pelt.Te[k])^(11.0/6.0)*BLamdaq^(2.0 / 3.0)
+        
+        CG = fugCG * av * log(1 + bv * (pelt.ne[k]*1e-20)^(2.0 / 3.0) * (pelt.radius[k]*1e2)^ (2.0 / 3.0))/ log(cv + dv * (pelt.ne[k]*1e-20)^(2.0 / 3.0) * (pelt.radius[k]*1e2)^ (2.0 / 3.0))
         
 
         G = xiexp * CG * Gpr * (2.0 / pelt.Bt[k]) ^ Bt_exp
       
-        dr_dt = -G / (4.0 * π *  pellet_mass_density("C") * (pelt.radius[k-1]*1e2)^2)
-        pelt.radius[k] = max(0.0, pelt.radius[k-1] + dr_dt * 1e-2 * (pelt.time[k] - pelt.time[k-1]))
-       
-       
-        G = xiexp * CG * Gpr * (2.0 / pelt.Bt[k]) ^ Bt_exp
       
-      
-   
-        GC = G*6.022e23/AC*ZC
-       
-        pelt.ablation_rate[k] = GC
-       
-       
-  
-
-
-
+        pelt.ablation_rate[k] = G* 6.022e23/AC*ZC      
 
     else
       println("No ablation model is implemented for such combination of species")
