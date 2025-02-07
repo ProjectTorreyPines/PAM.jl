@@ -4,7 +4,6 @@ import IMAS
 using Plots
 using DifferentialEquations
 using Interpolations
-#using Sundials
 
 
 function pellet_position(starting_position::Vector{Float64}, velocity_vector::Vector{Float64}, time::AbstractVector, tinj::Float64)
