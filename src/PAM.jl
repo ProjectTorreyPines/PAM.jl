@@ -24,6 +24,7 @@ end
 mutable struct Pellet1{A,T, N, S, B, X}
     properties::IMAS.pellets__time_slice___pellet
     Btdep::B
+    plasma_update::B
     drift_model::S
     time::A
     t::T
@@ -40,11 +41,12 @@ mutable struct Pellet1{A,T, N, S, B, X}
     radius::A
     ablation_rate::A
     density_source::N
+    temp_drop::A
     
 end
 
 
-function Pellet1(pelt::IMAS.pellets__time_slice___pellet, eqt::IMAS.equilibrium__time_slice, cp1d::IMAS.core_profiles__profiles_1d, time::Vector{Float64}, surfaces::Vector{IMAS.FluxSurface}, drift_model::Symbol, BtDependance::Bool )
+function Pellet1(pelt::IMAS.pellets__time_slice___pellet, eqt::IMAS.equilibrium__time_slice, cp1d::IMAS.core_profiles__profiles_1d, time::Vector{Float64}, surfaces::Vector{IMAS.FluxSurface}, drift_model::Symbol, BtDependance::Bool, plasma_update::Bool )
     # coordinates of the pellet
     # first point
     R1 = pelt.path_geometry.first_point.r
@@ -78,6 +80,7 @@ function Pellet1(pelt::IMAS.pellets__time_slice___pellet, eqt::IMAS.equilibrium_
     end
    
     Btdep = BtDependance
+    plasma_update = plasma_update
     #Bt = abs(eqt.eqt.global_quantities.magnetic_axis.r .b_field_tor) .* eqt.global_quantities.magnetic_axis.r ./r
     Bt = abs(eqt.global_quantities.vacuum_toroidal_field.b0) .* eqt.global_quantities.vacuum_toroidal_field.r0 ./r
  
@@ -92,10 +95,11 @@ function Pellet1(pelt::IMAS.pellets__time_slice___pellet, eqt::IMAS.equilibrium_
     @assert pelt.shape.size[1] == radii[end] "The layer's thickness don't add up to the total radius"
     radius = fill(radii[end], size(time))
     ablation_rate = fill(0.0, size(time))
+    temp_drop = fill(0.0, size(time))
     R_drift = fill(0.0, size(time))
     density_source = fill(0.0, (length(time), length(surfaces)))
     
-    return Pellet1(pelt, Btdep, drift_model, time, time[1], Bt , velocity_vector, r, R_drift, z, x, y, ρ, Te, ne, radius, ablation_rate, density_source)
+    return Pellet1(pelt, Btdep, plasma_update, drift_model, time, time[1], Bt , velocity_vector, r, R_drift, z, x, y, ρ, Te, ne, radius, ablation_rate, density_source, temp_drop)
 end
 
 """
@@ -377,7 +381,7 @@ function dr_dt!(pelt::Pellet1, k::Int)
       
        sol = solve(prob, Tsit5(),verbose=false)                   
              
-       
+
        pelt.radius[k] =sol[1, end]  
        
        #------- ablation rate calculations ---------------------------------
@@ -579,9 +583,7 @@ function pellet_density(pelt::Pellet1, eqt::IMAS.equilibrium__time_slice, cp1d::
     
     rcloudR=pelt.radius[k]*cloudFactorR  
     rcloudZ=pelt.radius[k]*cloudFactorZ
-   
-   
-    
+       
    
     # Assume density source as a 2D Gaussian function
     nsource = exp.(-0.5 .* ((pelt.r[k] .- surface.r .+ 0.5 .* pelt.R_drift[k]) .^ 2 ./ (rcloudR .+ 0.25 .* pelt.R_drift[k]) .^ 2 .+ (pelt.z[k] .- surface.z) .^ 2 ./ rcloudZ.^2))
@@ -599,8 +601,8 @@ end
 function ablate!(eqt::IMAS.equilibrium__time_slice, cp1d::IMAS.core_profiles__profiles_1d, pelt::Pellet1, surfaces::Vector{IMAS.FluxSurface})
 
     pellet_source = zeros(length(pelt.time),length(surfaces))
-    #rho_source = IMAS.interp1d(eqt.profiles_1d.psi, eqt.profiles_1d.rho_tor_norm).([surface.psi for surface in surfaces])
-
+    rho_source = IMAS.interp1d(eqt.profiles_1d.psi, eqt.profiles_1d.rho_tor_norm).([surface.psi for surface in surfaces])
+    
     for k in 2:length(pelt.time)
        dt= pelt.time[k] - pelt.time[k-1]
          
@@ -611,7 +613,10 @@ function ablate!(eqt::IMAS.equilibrium__time_slice, cp1d::IMAS.core_profiles__pr
        else
              
             dr_dt!(pelt,k) 
-           
+            if isnan(pelt.ablation_rate[k]) 
+                
+                pelt.ablation_rate[k] = 0.0
+            end
             
                  
            
@@ -619,12 +624,28 @@ function ablate!(eqt::IMAS.equilibrium__time_slice, cp1d::IMAS.core_profiles__pr
 
             for (ks, surface) in enumerate(surfaces)
                 tmp = pellet_density(pelt, eqt, cp1d, surface, k)
-               
-                pellet_source[k,ks] += tmp*dt
-
+                if isnan(tmp)
+                    pellet_source[k,ks] += 0.0
+                else
+                   pellet_source[k,ks] += tmp*dt
+                end
+            end
+            #------calculate energy sink and update plasma -----------
+            # pressure remains the same, causing a drop in T
+            ne0 = pelt.ne[k]        
+            
+            ne_new=pelt.ne[k]+sum(pellet_source[k, :])*(pelt.time[k]-pelt.time[k-1])
+            
+            pelt.temp_drop[k] = ne0/ne_new
+         
+            if pelt.plasma_update
+                pelt.ne[k] = ne_new
+                pelt.Te[k] *= pelt.temp_drop[k] 
+                if pelt.Te[k] < 1
+                    pelt.Te[k] = 1
+                end
             end
 
-         
         end
     pelt.density_source = pellet_source
     end
@@ -635,16 +656,29 @@ end
 
 
 
-@recipe function plot_pellet(pelt::Pellet1)
-    deposition = abs.(IMAS.gradient(pelt.radius))
+@recipe function plot_pellet_deposition(pelt::Pellet1; plot_cloud=true)
+   # deposition = abs.(IMAS.gradient(pelt.radius))
+
+    deposition = sum(pelt.density_source, dims=2)
     @series begin
-        label := "pellet $(IMAS.index(pelt.properties))"
-        linewidth := deposition ./ maximum(deposition) * 5 .+ 0.1
+        label := "normilized desity source Pellet $(IMAS.index(pelt.properties))"
+        linewidth := deposition  ./ maximum(deposition) .* 5 .+ 0.01
+        linealpha := 0.5
         pelt.r, pelt.z
     end
+    if plot_cloud 
+      @series begin
+        label := "pellet cloud trajectory Pellet $(IMAS.index(pelt.properties))"
+        linewidth := 2 
+        arrow := true
+        pelt.r+pelt.R_drift, pelt.z
+      end
+    end
+
     @series begin
         primary := false
         seriestype := :scatter
+        markersize := pelt.radius[1]*1000
         [pelt.r[1]], [pelt.z[1]]
     end
 end
@@ -652,17 +686,17 @@ end
 function run_PAM(dd::IMAS.dd, inputs)
     eqt = dd.equilibrium.time_slice[]
     cp1d = dd.core_profiles.profiles_1d[]
-    # generate time array for the simulations: t0 start of the pellet modeling, tf - end of the simulations)
-    time = collect(range(inputs.t0, inputs.tf, step=inputs.dt))
+    # generate time array for the simulations
+    time = collect(range(inputs.t_start, inputs.t_finish, step=inputs.time_step))
     
     # define flux surfaces, will be needed for the pellet source calculations
     surfaces = IMAS.trace_surfaces(eqt, IMAS.first_wall(dd.wall)...)
     
     drift_model=inputs.drift_model
     BtDependance=inputs.BtDependance
-
+    plasma_update=inputs.plasma_update
     # initialize the pellet structure 
-    pellet = Pellet1(dd.pellets.time_slice[].pellet[1], eqt, cp1d, time, surfaces, drift_model, BtDependance)
+    pellet = Pellet1(dd.pellets.time_slice[].pellet[1], eqt, cp1d, time, surfaces, drift_model, BtDependance, plasma_update)
     
     ablate!(eqt,cp1d, pellet, surfaces)
    
