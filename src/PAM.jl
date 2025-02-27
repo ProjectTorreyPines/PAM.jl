@@ -5,7 +5,6 @@ using Plots
 using DifferentialEquations
 using Interpolations
 
-
 function pellet_position(starting_position::Vector{Float64}, velocity_vector::Vector{Float64}, time::AbstractVector, tinj::Float64)
     x = starting_position[1] .+ velocity_vector[1] .* (time .- tinj)
     y = starting_position[2] .+ velocity_vector[2] .* (time .- tinj)
@@ -13,12 +12,10 @@ function pellet_position(starting_position::Vector{Float64}, velocity_vector::Ve
     return x, y, z
 end
 
-
 function projected_coordinate(x::AbstractVector{Float64}, y::AbstractVector{Float64}, z::AbstractVector{Float64})
     r = sqrt.(x .^ 2.0 .+ y .^ 2.0)
     return r, z
 end
-
 
 mutable struct Pellet{A,T,N,S,B,X}
     properties::IMAS.pellets__time_slice___pellet
@@ -44,7 +41,6 @@ mutable struct Pellet{A,T,N,S,B,X}
     temp_drop::A
 
 end
-
 
 function Pellet(
     pelt::IMAS.pellets__time_slice___pellet,
@@ -130,13 +126,11 @@ function get_ilayer(pelt::Pellet, k::Int)
     return layer_index
 end
 
-
 # the number of g/m^-3 # the data of mass density and atomic weight is sourced from PAM model within OMFIT
 function pellet_mass_density(species::String)
     material_density = Dict("DT" => 0.257, "D" => 0.2, "T" => 0.318, "C" => 3.3, "Ne" => 1.44)
     return material_density[species]
 end
-
 
 function drift!(pelt::Pellet, eqt::IMAS.equilibrium__time_slice, cp1d::IMAS.core_profiles__profiles_1d, k::Int)
     Raxis = eqt.global_quantities.magnetic_axis.r
@@ -538,7 +532,6 @@ function pellet_density(pelt::Pellet, eqt::IMAS.equilibrium__time_slice, cp1d::I
     return IMAS.flux_surface_avg(nsource, surface)
 end
 
-
 function ablate!(eqt::IMAS.equilibrium__time_slice, cp1d::IMAS.core_profiles__profiles_1d, pelt::Pellet, surfaces::Vector{IMAS.FluxSurface})
 
 
@@ -547,7 +540,6 @@ function ablate!(eqt::IMAS.equilibrium__time_slice, cp1d::IMAS.core_profiles__pr
 
     for k in 2:length(pelt.time)
         dt = pelt.time[k] - pelt.time[k-1]
-
 
         if pelt.ρ[k] > 1.0 && pelt.radius[k-1] > 0
             pelt.radius[k] = pelt.radius[k-1]
@@ -559,9 +551,6 @@ function ablate!(eqt::IMAS.equilibrium__time_slice, cp1d::IMAS.core_profiles__pr
 
                 pelt.ablation_rate[k] = 0.0
             end
-
-
-
 
             drift!(pelt, eqt, cp1d, k)
 
@@ -597,10 +586,6 @@ function ablate!(eqt::IMAS.equilibrium__time_slice, cp1d::IMAS.core_profiles__pr
 
     return
 end
-
-
-
-
 
 @recipe function plot_pellet_deposition(pelt::Pellet; plot_cloud=true)
     # deposition = abs.(IMAS.gradient(pelt.radius))
