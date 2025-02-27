@@ -20,7 +20,7 @@ end
 mutable struct Pellet{A,T,N,S,B,X}
     properties::IMAS.pellets__time_slice___pellet
     Btdep::B
-    plasma_update::B
+    update_plasma::B
     drift_model::S
     time::A
     t::T
@@ -37,9 +37,7 @@ mutable struct Pellet{A,T,N,S,B,X}
     radius::A
     ablation_rate::A
     density_source::N
-
     temp_drop::A
-
 end
 
 function Pellet(
@@ -49,8 +47,8 @@ function Pellet(
     time::Vector{Float64},
     surfaces::Vector{IMAS.FluxSurface},
     drift_model::Symbol,
-    BtDependance::Bool,
-    plasma_update::Bool
+    Bt_dependance::Bool,
+    update_plasma::Bool
 )
 
     # coordinates of the pellet
@@ -85,8 +83,6 @@ function Pellet(
         error("Pellet starting inside plasma at rho = $rho_start")
     end
 
-    Btdep = BtDependance
-    plasma_update = plasma_update
     #Bt = abs(eqt.eqt.global_quantities.magnetic_axis.r .b_field_tor) .* eqt.global_quantities.magnetic_axis.r ./r
     Bt = abs(eqt.global_quantities.vacuum_toroidal_field.b0) .* eqt.global_quantities.vacuum_toroidal_field.r0 ./ r
 
@@ -104,25 +100,43 @@ function Pellet(
     temp_drop = fill(0.0, size(time))
     R_drift = fill(0.0, size(time))
     density_source = fill(0.0, (length(time), length(surfaces)))
-    return Pellet(pelt, Btdep, plasma_update, drift_model, time, time[1], Bt, velocity_vector, r, R_drift, z, x, y, ρ, Te, ne, radius, ablation_rate, density_source, temp_drop)
+    return Pellet(
+        pelt,
+        Bt_dependance,
+        update_plasma,
+        drift_model,
+        time,
+        time[1],
+        Bt,
+        velocity_vector,
+        r,
+        R_drift,
+        z,
+        x,
+        y,
+        ρ,
+        Te,
+        ne,
+        radius,
+        ablation_rate,
+        density_source,
+        temp_drop
+    )
 end
 
 """
-get_ilayer: This function returns the layer index based on current pellet radius and thikness of the pellet radii.
+    get_ilayer(pelt::Pellet, k::Int)
+
+Return the layer index based on current pellet radius and thikness of the pellet radii
 """
 function get_ilayer(pelt::Pellet, k::Int)
-
     layers = cumsum([layer.thickness for layer in pelt.properties.layer])
-
     pos = pelt.radius[k] .- layers
-
     if maximum(pos) >= 0.0
-
         layer_index = maximum([i for i in 1:length(pos) if pos[i] >= 0.0])
     else
         layer_index = 1
     end
-
     return layer_index
 end
 
@@ -301,7 +315,6 @@ function dr_dt!(pelt::Pellet, k::Int)
     end
 
     # ablation model for the DT pellet
-
     if ("D" in species_list) & ("T" in species_list)
         if species_list[1] == "D"
             AD = A[1]
@@ -326,7 +339,6 @@ function dr_dt!(pelt::Pellet, k::Int)
 
         function dr_dt_DT(du, u, p, t)
             c0 = 8.358 * Wratio^0.6667 * (abs(Bt_function(t)) / 2.0)^Bt_exp
-
             if u[1] < 0
                 u[1] = 0
             else
@@ -430,7 +442,6 @@ function dr_dt!(pelt::Pellet, k::Int)
         lamdac = -0.2437544205933372
         lamdad = -0.8534855445478313
 
-
         function dr_dt_C(du, u, p, t)
             if u[1] < 0
                 u[1] = 0
@@ -533,10 +544,7 @@ function pellet_density(pelt::Pellet, eqt::IMAS.equilibrium__time_slice, cp1d::I
 end
 
 function ablate!(eqt::IMAS.equilibrium__time_slice, cp1d::IMAS.core_profiles__profiles_1d, pelt::Pellet, surfaces::Vector{IMAS.FluxSurface})
-
-
     pellet_source = zeros(length(pelt.time), length(surfaces))
-    rho_source = IMAS.interp1d(eqt.profiles_1d.psi, eqt.profiles_1d.rho_tor_norm).([surface.psi for surface in surfaces])
 
     for k in 2:length(pelt.time)
         dt = pelt.time[k] - pelt.time[k-1]
@@ -545,7 +553,6 @@ function ablate!(eqt::IMAS.equilibrium__time_slice, cp1d::IMAS.core_profiles__pr
             pelt.radius[k] = pelt.radius[k-1]
 
         else
-
             dr_dt!(pelt, k)
             if isnan(pelt.ablation_rate[k])
 
@@ -556,13 +563,13 @@ function ablate!(eqt::IMAS.equilibrium__time_slice, cp1d::IMAS.core_profiles__pr
 
             for (ks, surface) in enumerate(surfaces)
                 tmp = pellet_density(pelt, eqt, cp1d, surface, k)
-
                 if isnan(tmp)
                     pellet_source[k, ks] += 0.0
                 else
                     pellet_source[k, ks] += tmp * dt
                 end
             end
+
             #------calculate energy sink and update plasma -----------
             # pressure remains the same, causing a drop in T
             ne0 = pelt.ne[k]
@@ -571,13 +578,12 @@ function ablate!(eqt::IMAS.equilibrium__time_slice, cp1d::IMAS.core_profiles__pr
 
             pelt.temp_drop[k] = ne0 / ne_new
 
-            if pelt.plasma_update
+            if pelt.update_plasma
                 pelt.ne[k] = ne_new
                 pelt.Te[k] *= pelt.temp_drop[k]
                 if pelt.Te[k] < 1
                     pelt.Te[k] = 1
                 end
-
             end
 
         end
@@ -615,21 +621,23 @@ end
     end
 end
 
-function run_PAM(dd::IMAS.dd, inputs)
+"""
+    run_PAM(dd::IMAS.dd; t_start::Float64, t_finish::Float64, time_step::Float64, drift_model::Symbol, Bt_dependance::Bool, update_plasma::Bool)
+
+Run Pellet Ablation Model and write data to 
+"""
+function run_PAM(dd::IMAS.dd; t_start::Float64, t_finish::Float64, time_step::Float64, drift_model::Symbol, Bt_dependance::Bool, update_plasma::Bool)
     eqt = dd.equilibrium.time_slice[]
     cp1d = dd.core_profiles.profiles_1d[]
 
     # generate time array for the simulations
-    time = collect(range(inputs.t_start, inputs.t_finish; step=inputs.time_step))
+    time = collect(range(t_start, t_finish; step=time_step))
 
     # define flux surfaces, will be needed for the pellet source calculations
     surfaces = IMAS.trace_surfaces(eqt, IMAS.first_wall(dd.wall)...)
 
-    drift_model = inputs.drift_model
-    BtDependance = inputs.BtDependance
-    plasma_update = inputs.plasma_update
     # initialize the pellet structure 
-    pellet = Pellet(dd.pellets.time_slice[].pellet[1], eqt, cp1d, time, surfaces, drift_model, BtDependance, plasma_update)
+    pellet = Pellet(dd.pellets.time_slice[].pellet[1], eqt, cp1d, time, surfaces, drift_model, Bt_dependance, update_plasma)
 
     ablate!(eqt, cp1d, pellet, surfaces)
 
