@@ -7,18 +7,17 @@ using Test
 
     dd_D3D.pellets.time_slice[].pellet[1].velocity_initial = 200.0
 
-    @test begin
-        try
+    for drift_model in (:Parks, :HPI2, :none)
+        println(drift_model)
+        @test begin
             PAM.run_PAM(dd_D3D;
                 t_start=0.0,
                 t_finish=0.0045,
                 time_step=0.0001,
-                drift_model=:Parks,
+                drift_model,
                 Bt_dependance=true,
                 update_plasma=true)
-            return true
-        catch
-            return false
+            true
         end
     end
 
