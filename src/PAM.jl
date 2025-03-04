@@ -171,17 +171,16 @@ function drift!(::Val{:HPI2}, pelt::Pellet, eqt::IMAS.equilibrium__time_slice, c
     vp = sqrt(pelt.velocity_vector[1]^2 + pelt.velocity_vector[2]^2 + pelt.velocity_vector[3]^2)
 
     rp = pelt.radius[1] * 1e3  # from m to mm
-    ne0 = pelt.ne[1] * 1e-1 #to 1e19 m^-3
-    te0 = pelt.Te[1] * 1e-3
-
-    R0 = eqt.global_quantities.magnetic_axis.r
-    B0 = eqt.global_quantities.magnetic_axis.b_field_tor
+    ne0 = cp1d.electrons.density[1] * 1e-19 #to 1e19 m^-3
+    te0 = cp1d.electrons.temperature[1] * 1e-3
+    R0 = eqt.global_quantities.vacuum_toroidal_field.r0
+    B0 = eqt.global_quantities.vacuum_toroidal_field.b0
     a0 = eqt.boundary.minor_radius
     kappa = eqt.boundary.elongation
-    alpha = atan(pelt.z[k] - Zaxis, pelt.r[k] - Raxis)
-
-    dr_drift = c1 * (vp / 100)^c2 * rp^c3 * ne0^c4 * te0^c5 * (abs(abs(alpha) - c6) + c8)^c7 * (1 - pelt.ρ[k])^c9 * a0^c10 * R0^c11 * B0^c12 * kappa^c13
-
+    alpha = atan(pelt.z[1] - Zaxis, pelt.r[1] - Raxis)
+    lam = minimum(pelt.ρ)
+    
+    dr_drift = real(c1 * (vp / 100)^c2 * rp^c3  * ne0^c4 * te0^c5 * (abs(abs(alpha) - c6) + c8)^c7  * (1 - lam)^c9 * a0^c10 * R0^c11 * Complex(B0)^c12 * kappa^c13)
     pelt.R_drift[k] = dr_drift
 
     return
