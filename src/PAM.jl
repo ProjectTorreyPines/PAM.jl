@@ -281,7 +281,7 @@ function drift!(::Val{:Parks}, pelt::Pellet, eqt::IMAS.equilibrium__time_slice, 
 
     prob = DifferentialEquations.ODEProblem(vRdot!, u0, t_span)
 
-    sol = DifferentialEquations.solve(prob, DifferentialEquations.RadauIIA5(; autodiff=false); verbose=false)
+    sol = DifferentialEquations.solve(prob, DifferentialEquations.RadauIIA5(); verbose=false)
 
     dr_drift = sol[1, end] - pelt.r[k]
 
