@@ -286,10 +286,10 @@ function drift!(::Val{:Parks}, pelt::Pellet, eqt::IMAS.equilibrium__time_slice, 
     #  RadauIIA5(; autodiff=false) is the most accurate method for this problem and provide nice solution, but fails during the regression
     #  test as can't work without autodiff option
     #  Tsit5() or Vern7() are able to solve the system, but the solution is oscillating, but use it as it should work for the regression test 
-    #sol = DifferentialEquations.solve(prob, DifferentialEquations.RadauIIA5(; autodiff=false); verbose=false)
+    sol = DifferentialEquations.solve(prob, DifferentialEquations.RadauIIA5(; autodiff=false); verbose=false)
     #sol = DifferentialEquations.solve(prob, DifferentialEquations.Tsit5(); verbose=false)
     #------------------------------------------------------------------------------------------------------------
-    sol = DifferentialEquations.solve(prob, DifferentialEquations.Vern7(); verbose=false)
+    #sol = DifferentialEquations.solve(prob, DifferentialEquations.Vern7(); verbose=false)
 
     dr_drift = sol[1, end] - pelt.r[k]
 
