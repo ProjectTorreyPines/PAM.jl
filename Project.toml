@@ -1,7 +1,7 @@
 name = "PAM"
 uuid = "8217f67a-9bf0-495c-a6dc-30c3fb73287a"
 authors = ["Galina Avdeeva <80053907+avdeevag@users.noreply.github.com>"]
-version = "2.0.0"
+version = "2.0.1"
 
 [deps]
 DifferentialEquations = "0c46a032-eb83-5123-abaf-570d42b7fbaa"
