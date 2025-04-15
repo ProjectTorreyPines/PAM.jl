@@ -6,3 +6,10 @@ This package implements the Pellet Ablation Module: reference paper (https://iop
 For more details, see the [online documentation](https://projecttorreypines.github.io/PAM.jl/dev).
 
 ![Docs](https://github.com/ProjectTorreyPines/PAM.jl/actions/workflows/make_docs.yml/badge.svg)
+
+
+## Input structure
+
+## Ablation model
+
+## Drift model
