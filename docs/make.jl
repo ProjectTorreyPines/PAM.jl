@@ -18,7 +18,7 @@ makedocs(;
     format=Documenter.HTML(;analytics="G-65D8V8C8VQ"),
     sitename="PAM",
     checkdocs=:none,
-    pages=["index.md", "api.md", "License" => "license.md", "Notice" => "notice.md"],
+    pages=["index.md",  "api.md", "License" => "license.md", "Notice" => "notice.md"],
     warnonly=true
 )
 
@@ -37,5 +37,5 @@ deploydocs(;
     target="build",
     branch="gh-pages",
     devbranch="master",
-    versions=["stable" => "v^", "v#.#"]
+    versions="2.0.1" #["stable" => "v^", "v#.#"]
 )
