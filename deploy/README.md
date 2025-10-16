@@ -11,15 +11,23 @@ Builds a precompiled Julia system image containing PAM and its dependencies for 
 **Usage:**
 
 ```bash
-julia --project=. deploy/build_sysimage.jl [--cpu-target=TARGET] [--output=DIR]
+julia --project=. deploy/build_sysimage.jl [--cpu-target=TARGET] [--outdir=DIR]
 ```
 
 **Options:**
 - `--cpu-target=TARGET` - CPU optimization (default: native)
-- `--output=DIR` - Output directory (default: sysimage/)
+- `--outdir=DIR` - Output directory (default: sysimage/)
 - `--help` - Show help
 
 **Output:** `<output_dir>/sys_pam.{dylib|so}`, launcher script
+
+### `precompile_script.jl`
+
+Standalone precompile script that traces PAM usage patterns. Can be run independently for testing:
+
+```bash
+julia --project=. deploy/precompile_script.jl
+```
 
 ## Usage
 
@@ -39,6 +47,9 @@ julia --project=. --sysimage=sysimage/sys_pam.dylib
 ```bash
 # Out of memory → use generic target
 julia --project=. deploy/build_sysimage.jl --cpu-target=generic
+
+# Custom output directory
+julia --project=. deploy/build_sysimage.jl --outdir=~/my_pam_build
 
 # Permission denied
 chmod +x sysimage/pam
