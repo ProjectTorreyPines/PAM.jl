@@ -2,36 +2,60 @@
 # PAM SystemImage Builder
 # Minimal script based on FUSE install_pam.jl logic
 
-println("=" ^ 70)
 println("PAM SystemImage Builder")
-println("=" ^ 70)
 
 # Parse command-line arguments
 cpu_target = get(ENV, "JULIA_CPU_TARGET", "native")
-if length(ARGS) > 0 && startswith(ARGS[1], "--cpu-target=")
-    cpu_target = split(ARGS[1], "=")[2]
+output_dir = nothing
+
+for arg in ARGS
+    if startswith(arg, "--cpu-target=")
+        global cpu_target = split(arg, "=")[2]
+    elseif startswith(arg, "--output=") || startswith(arg, "-o=")
+        global output_dir = split(arg, "=")[2]
+    elseif arg in ["--help", "-h"]
+        println("""
+        Usage: julia deploy/build_sysimage.jl [OPTIONS]
+
+        Options:
+          --cpu-target=TARGET    Set CPU target (default: native)
+          --output=DIR, -o=DIR   Set output directory (default: sysimage/)
+          --help, -h             Show this help message
+
+        Examples:
+          julia deploy/build_sysimage.jl
+          julia deploy/build_sysimage.jl --output=/path/to/custom/dir
+          julia deploy/build_sysimage.jl --cpu-target=generic --output=~/pam_build
+        """)
+        exit(0)
+    end
 end
 
-println("\n### Configuration")
-println("    CPU Target: $cpu_target")
-println("    Project: PAM")
+println("CPU Target: $cpu_target")
+!isnothing(output_dir) && println("Output: $output_dir")
 
 # Setup environment
 import Pkg
 
-println("\n### Activating PAM environment")
 project_dir = dirname(dirname(@__FILE__))
 Pkg.activate(project_dir)
 
-println("\n### Installing PackageCompiler")
 if !haskey(Pkg.project().dependencies, "PackageCompiler")
+    println("Installing PackageCompiler...")
     Pkg.add("PackageCompiler")
 end
 using PackageCompiler
 
-println("\n### Creating precompile script")
-sysimage_dir = joinpath(project_dir, "sysimage")
+println("Creating precompile script...")
+# Determine output directory: use custom path if provided, otherwise default to project/sysimage
+if isnothing(output_dir)
+    sysimage_dir = joinpath(project_dir, "sysimage")
+else
+    # Expand ~ and resolve relative paths
+    sysimage_dir = abspath(expanduser(output_dir))
+end
 mkpath(sysimage_dir)
+println("Output: $sysimage_dir")
 
 precompile_execution_file = joinpath(sysimage_dir, "precompile_script.jl")
 precompile_cmds = """
@@ -39,17 +63,24 @@ precompile_cmds = """
 using PAM, IMAS, DifferentialEquations, Plots
 
 println("Loading example data...")
-dd = IMAS.json2imas(joinpath(pkgdir(PAM), "examples", "template_D3D_1layer_2species.json"))
+dd_json = IMAS.json2imas(joinpath(pkgdir(PAM), "examples", "template_D3D_1layer_2species.json"))
+dd_hdf5 = IMAS.hdf2imas(joinpath(pkgdir(PAM), "examples", "template_D3D_1layer_2species.h5"))
 
 println("Running PAM simulation...")
-pellet = PAM.run_PAM(dd;
+# Match actual usage in PAM_test.jl (t_finish=0.0125)
+pellet = PAM.run_PAM(dd_json;
     t_start=0.0,
-    t_finish=0.0045,
+    t_finish=0.0125,  # ← Changed to match actual usage
     time_step=0.0001,
     drift_model=:none,
     Bt_dependance=true,
     update_plasma=false
 )
+
+println("Precompiling CLI driver patterns...")
+# Simulate typical CLI usage patterns
+maximum(pellet.density_source)  # Common output operation
+println("Maximum density source: \$(maximum(pellet.density_source))")
 
 println("Running tests...")
 include(joinpath(pkgdir(PAM), "test", "runtests.jl"))
@@ -57,49 +88,28 @@ include(joinpath(pkgdir(PAM), "test", "runtests.jl"))
 println("Precompilation complete!")
 """
 write(precompile_execution_file, precompile_cmds)
-println("    Precompile script: $precompile_execution_file")
 
-println("\n### Building PAM sysimage (this may take 5-10 minutes)...")
-# Platform-specific extension: .dylib (macOS), .so (Linux), .dll (Windows)
+println("Building sysimage (5-10 minutes)...")
 sysimage_ext = Sys.isapple() ? "dylib" : (Sys.iswindows() ? "dll" : "so")
 sysimage_path = joinpath(sysimage_dir, "sys_pam.$sysimage_ext")
-println("    Platform: $(Sys.KERNEL)")
-println("    Output: sys_pam.$sysimage_ext")
-println("\n    Build process:")
-println("      1. Precompiling packages → Julia IR (1-2 min)")
-println("      2. Executing precompile_script.jl → function tracing (2-3 min)")
-println("      3. Compiling traced functions → native code (2-5 min)")
-println("      4. Bundling into sysimage file")
 create_sysimage(
     ["PAM", "IMAS", "DifferentialEquations", "Plots"];
     sysimage_path,
     precompile_execution_file,
-    cpu_target
+    cpu_target,    
+    incremental=false,
 )
 
-println("\n### Creating launcher script")
+println("Creating launcher script...")
 launcher_script = joinpath(sysimage_dir, "pam")
 launcher_content = """
 #!/bin/bash
-# PAM launcher with precompiled sysimage
-SCRIPT_DIR="\$( cd "\$( dirname "\${BASH_SOURCE[0]}" )" && pwd )"
-PROJECT_DIR="\$(dirname "\$SCRIPT_DIR")"
-
-echo "Starting Julia with PAM sysimage..."
-julia --project=\$PROJECT_DIR --sysimage=\$SCRIPT_DIR/sys_pam.$(Sys.isapple() ? "dylib" : "so") "\$@"
+SYSIMAGE_DIR="$sysimage_dir"
+PROJECT_DIR="$project_dir"
+julia --project=\$PROJECT_DIR --sysimage=\$SYSIMAGE_DIR/sys_pam.$sysimage_ext "\$@"
 """
 write(launcher_script, launcher_content)
 chmod(launcher_script, 0o755)
 
-println("\n" * "=" ^ 70)
-println("✅ PAM SystemImage build complete!")
-println("=" ^ 70)
-println("\nUsage:")
-println("  1. Direct usage:")
-println("     julia --project=. --sysimage=sysimage/sys_pam.$(Sys.isapple() ? "dylib" : "so")")
-println("\n  2. Using launcher script:")
-println("     ./sysimage/pam")
-println("\n  3. Interactive REPL:")
-println("     ./sysimage/pam -i")
-println("\nExpected speedup: ~10x faster package loading")
-println("=" ^ 70)
+println("\n✅ Build complete!")
+println("Usage: $launcher_script [script.jl] or julia --project=$project_dir --sysimage=$sysimage_path")

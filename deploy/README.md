@@ -11,82 +11,38 @@ Builds a precompiled Julia system image containing PAM and its dependencies for 
 **Usage:**
 
 ```bash
-# Build with native CPU optimization (recommended)
-julia --project=. deploy/build_sysimage.jl
-
-# Build with generic CPU target (portable across systems)
-julia --project=. deploy/build_sysimage.jl --cpu-target=generic
+julia --project=. deploy/build_sysimage.jl [--cpu-target=TARGET] [--output=DIR]
 ```
 
-**What it does:**
+**Options:**
+- `--cpu-target=TARGET` - CPU optimization (default: native)
+- `--output=DIR` - Output directory (default: sysimage/)
+- `--help` - Show help
 
-1. Activates PAM project environment
-2. Installs PackageCompiler if needed
-3. Creates precompile script that runs PAM tests
-4. Builds system image (~5-10 minutes)
-5. Creates launcher script for easy usage
+**Output:** `<output_dir>/sys_pam.{dylib|so}`, launcher script
 
-**Output:**
-
-- `sysimage/sys_pam.dylib` (or `.so` on Linux) - Precompiled system image
-- `sysimage/precompile_script.jl` - Script used for precompilation
-- `sysimage/pam` - Launcher script
-
-## Using the Precompiled System Image
-
-### Method 1: Direct Julia invocation
+## Usage
 
 ```bash
+# Direct
 julia --project=. --sysimage=sysimage/sys_pam.dylib
-```
 
-### Method 2: Using launcher script
-
-```bash
-# Interactive REPL
+# Launcher script
 ./sysimage/pam -i
-
-# Run a script
-./sysimage/pam test/PAM_test.jl examples/template_D3D_1layer_2species.json
+./sysimage/pam script.jl
 ```
 
-## Performance Benefits
-
-- **Normal Julia startup**: ~50 seconds for first PAM use
-- **With sysimage**: ~5 seconds for first PAM use
-- **Package loading**: Near-instant (precompiled)
-
-## CPU Targets
-
-| Target | Description | Use Case |
-|--------|-------------|----------|
-| `native` | Optimized for current CPU | Best performance, local use only |
-| `generic` | Works on all CPUs | Portable, slightly slower |
-| `apple-m1` | Apple Silicon optimized | M1/M2/M3 Macs |
-| `haswell` | Intel Haswell+ | Intel CPUs 2013+ |
+**Performance:** ~10x faster package loading (50s → 5s)
 
 ## Troubleshooting
 
-**Build fails with "out of memory":**
 ```bash
+# Out of memory → use generic target
 julia --project=. deploy/build_sysimage.jl --cpu-target=generic
-```
 
-**Permission denied on launcher:**
-```bash
+# Permission denied
 chmod +x sysimage/pam
+
+# Rebuild
+rm -rf sysimage/ && julia --project=. deploy/build_sysimage.jl
 ```
-
-**Want to rebuild:**
-```bash
-rm -rf sysimage/
-julia --project=. deploy/build_sysimage.jl
-```
-
-## Based On
-
-This script is inspired by FUSE's `install_pam.jl` but simplified for PAM's needs:
-- No environment management (uses current project)
-- No IJulia kernel installation
-- No Makefile parsing
-- Minimal dependencies
