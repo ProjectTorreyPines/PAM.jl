@@ -5,7 +5,7 @@
 println("PAM SystemImage Builder")
 
 # Parse command-line arguments
-cpu_target = get(ENV, "JULIA_CPU_TARGET", "native")
+cpu_target = get(ENV, "JULIA_CPU_TARGET", "generic")  # Portable by default
 output_dir = nothing
 
 for arg in ARGS
@@ -18,14 +18,16 @@ for arg in ARGS
         Usage: julia deploy/build_sysimage.jl [OPTIONS]
 
         Options:
-          --cpu-target=TARGET    Set CPU target (default: native)
+          --cpu-target=TARGET    Set CPU target (default: generic)
+                                 - generic: Portable (default)
+                                 - native: Fastest on your CPU (not portable)
           --outdir=DIR           Set output directory (default: sysimage/)
           --help, -h             Show this help message
 
         Examples:
           julia deploy/build_sysimage.jl
+          julia deploy/build_sysimage.jl --cpu-target=native  # Max performance
           julia deploy/build_sysimage.jl --outdir=/path/to/custom/dir
-          julia deploy/build_sysimage.jl --cpu-target=generic --outdir=~/pam_build
         """)
         exit(0)
     end
@@ -80,7 +82,7 @@ launcher_content = """
 #!/bin/bash
 SYSIMAGE_DIR="$sysimage_dir"
 PROJECT_DIR="$project_dir"
-julia --project=\$PROJECT_DIR --sysimage=\$SYSIMAGE_DIR/sys_pam.$sysimage_ext "\$@"
+julia --project=\$PROJECT_DIR --sysimage=\$SYSIMAGE_DIR/sys_pam.$sysimage_ext --startup-file=no "\$@"
 """
 write(launcher_script, launcher_content)
 chmod(launcher_script, 0o755)
