@@ -162,9 +162,9 @@ echo "===================================="
 echo ""
 
 if [[ "$VERBOSE" == true ]]; then
-    julia "$PAM_REPO_DIR/deploy/install_pam_env.jl"
+    julia --startup-file=no "$PAM_REPO_DIR/deploy/install_pam_env.jl"
 else
-    julia "$PAM_REPO_DIR/deploy/install_pam_env.jl" 2>&1 | grep -E "^(###|✓|✗|Error|Warning)" || true
+    julia --startup-file=no "$PAM_REPO_DIR/deploy/install_pam_env.jl" 2>&1 | grep -E "^(###|✓|✗|Error|Warning)" || true
 fi
 
 JULIA_EXIT_CODE=${PIPESTATUS[0]}
