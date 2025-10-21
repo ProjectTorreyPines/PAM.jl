@@ -8,7 +8,8 @@ set -e  # Exit on error
 # ===== Configuration =====
 DEFAULT_INSTALL_DIR="$HOME/.local/pam"
 DEFAULT_CPU_TARGET="generic;native"  # Portable fallback + optimized (fat binary)
-PAM_REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# Get PAM repository root (two levels up from deploy/generic/)
+PAM_REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 
 # ===== Argument Parsing =====
 INSTALL_DIR="$DEFAULT_INSTALL_DIR"
