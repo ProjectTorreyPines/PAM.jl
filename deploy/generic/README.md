@@ -85,8 +85,10 @@ julia --project=. deploy/generic/build_sysimage.jl
 ├── Manifest.toml
 ├── sys_pam.so           # Optimized sysimage
 ├── bin/pam              # Launcher
-└── .julia/              # Isolated depot
+└── .julia/              # PAM depot (fallback for sysimage)
 ```
+
+Launcher uses `$HOME/.julia` first, then PAM depot as fallback.
 
 ## Troubleshooting
 

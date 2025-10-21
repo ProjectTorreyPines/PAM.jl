@@ -20,12 +20,21 @@ setenv("PAM_ENV_DIR", env_dir)
 -- Julia configuration
 setenv("JULIA_CPU_TARGET", cpu_target)
 
--- Julia depot path: Always use user's HOME depot for isolation
--- Each user gets independent package management in $HOME/.julia
--- PAM depot is appended as fallback for sysimage metadata
+-- Julia depot path: user depot first, then PAM depot
+-- This allows users to install their own packages while PAM environment provides base packages
 local home = os.getenv("HOME")
-local user_depot = pathJoin(home, ".julia")
-setenv("JULIA_DEPOT_PATH", user_depot .. ":" .. base_depot .. ":")
+local user_depot = os.getenv("JULIA_DEPOT_PATH")
+
+if not user_depot then
+    -- JULIA_DEPOT_PATH is unset, use default HOME user depot
+    setenv("JULIA_DEPOT_PATH", pathJoin(home, ".julia") .. ":" .. base_depot .. ":")
+elseif user_depot:sub(-1) == ":" then
+    -- JULIA_DEPOT_PATH ends with ":", append base_depot after it
+    setenv("JULIA_DEPOT_PATH", user_depot .. base_depot .. ":")
+else
+    -- JULIA_DEPOT_PATH doesn't end with ":", add it automatically
+    setenv("JULIA_DEPOT_PATH", user_depot .. ":" .. base_depot .. ":")
+end
 
 -- PAM sysimage environment is the last place Julia looks for packages
 setenv("JULIA_LOAD_PATH", ":" .. env_dir)

@@ -210,12 +210,15 @@ One-liner:
   $(install_dir)/bin/pam -e 'using PAM; ...'
 
 Direct Julia invocation:
-  julia --project=$install_dir --sysimage=$sysimage_path
+  export JULIA_LOAD_PATH=:$install_dir
+  julia --sysimage=$sysimage_path
 
 Environment Variables:
 ----------------------
 JULIA_DEPOT_PATH=~/.julia:$(install_dir)/.julia:
 JULIA_LOAD_PATH=:$(install_dir)
+
+Note: User depot (~/.julia) is checked first, PAM depot as fallback.
 """
 
 write(info_file, info_content)
