@@ -87,7 +87,7 @@ echo ""
 # Detect Julia
 if command -v julia >/dev/null 2>&1; then
     JULIA_BIN=$(command -v julia)
-    JULIA_VERSION=$(julia -e 'print(VERSION)')
+    JULIA_VERSION=$(julia --startup-file=no -e 'print(VERSION)')
     echo "✓ Found Julia $JULIA_VERSION at $JULIA_BIN"
 else
     echo "✗ Julia not found in PATH"
