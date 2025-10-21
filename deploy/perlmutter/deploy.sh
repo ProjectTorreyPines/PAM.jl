@@ -274,6 +274,27 @@ if [[ $JULIA_EXIT_CODE -ne 0 ]]; then
     exit $JULIA_EXIT_CODE
 fi
 
+# ===== Generate Module File =====
+echo "===================================="
+echo "Generating module file"
+echo "===================================="
+echo ""
+
+MODULE_TEMPLATE="$(dirname "${BASH_SOURCE[0]}")/base.lua"
+MODULE_OUTPUT="$BUILD_DIR/pam_module.lua"
+
+echo "Reading template: $MODULE_TEMPLATE"
+echo "Writing module file: $MODULE_OUTPUT"
+
+# Read template and substitute variables
+sed -e "s|ENV_DIR_PLACEHOLDER|$ENV_DIR|g" \
+    -e "s|PAM_VERSION_PLACEHOLDER|$PAM_VERSION|g" \
+    -e "s|CPU_TARGET_PLACEHOLDER|$JULIA_CPU_TARGET|g" \
+    "$MODULE_TEMPLATE" > "$MODULE_OUTPUT"
+
+echo "✓ Module file generated"
+echo ""
+
 # ===== Deploy to Production =====
 echo "===================================="
 echo "Deploying to production"

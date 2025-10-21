@@ -1,8 +1,8 @@
 -- PAM Base Module Template for Perlmutter
--- Variables basedir, pam_version, cpu_target are set by installer
+-- Placeholders will be replaced by deploy.sh
 
 whatis("Name: PAM")
-whatis("Version: " .. pam_version)
+whatis("Version: PAM_VERSION_PLACEHOLDER")
 whatis("Description: Pellet Ablation Model - Julia environment")
 whatis("URL: https://github.com/ProjectTorreyPines/PAM.jl")
 
@@ -10,15 +10,14 @@ whatis("URL: https://github.com/ProjectTorreyPines/PAM.jl")
 family("pam")
 
 -- Environment setup
-local env_dir = pathJoin(basedir, "environments", pam_version)
+local env_dir = "ENV_DIR_PLACEHOLDER"
 local base_depot = pathJoin(env_dir, ".julia")
 
-setenv("PAM_HOME", basedir)
-setenv("PAM_VERSION", pam_version)
+setenv("PAM_VERSION", "PAM_VERSION_PLACEHOLDER")
 setenv("PAM_ENV_DIR", env_dir)
 
 -- Julia configuration
-setenv("JULIA_CPU_TARGET", cpu_target)
+setenv("JULIA_CPU_TARGET", "CPU_TARGET_PLACEHOLDER")
 
 -- Julia depot path: user depot first, then PAM depot
 -- This allows users to install their own packages while PAM environment provides base packages
