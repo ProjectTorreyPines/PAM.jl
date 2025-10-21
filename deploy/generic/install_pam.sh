@@ -7,14 +7,14 @@ set -e  # Exit on error
 
 # ===== Configuration =====
 DEFAULT_INSTALL_DIR="$HOME/.local/pam"
-DEFAULT_CPU_TARGET="generic"  # Portable by default, use --cpu-target=native for max performance
+DEFAULT_CPU_TARGET="generic;native"  # Portable fallback + optimized (fat binary)
 PAM_REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 # ===== Argument Parsing =====
 INSTALL_DIR="$DEFAULT_INSTALL_DIR"
 CPU_TARGET="$DEFAULT_CPU_TARGET"
 JULIA_THREADS=1
-VERBOSE=false
+VERBOSE=true
 
 usage() {
     cat << EOF
@@ -162,10 +162,10 @@ echo "===================================="
 echo ""
 
 if [[ "$VERBOSE" == true ]]; then
-    julia --startup-file=no "$PAM_REPO_DIR/deploy/install_pam_env.jl"
+    julia --startup-file=no "$PAM_REPO_DIR/deploy/generic/install_pam_env.jl"
 else
-    # Show progress: major steps, package operations, and errors
-    julia --startup-file=no "$PAM_REPO_DIR/deploy/install_pam_env.jl" 2>&1 | grep -E "^(###|✓|✗|Error|Warning|    |Precompiling|Downloading|Installed|Updating|Cloning|Building)" || true
+    # Show progress: major steps, package operations, PackageCompiler output, and errors
+    julia --startup-file=no "$PAM_REPO_DIR/deploy/generic/install_pam_env.jl" 2>&1 | grep -vE "^(\[|  |Activating|Resolving package|No Changes)" || true
 fi
 
 JULIA_EXIT_CODE=${PIPESTATUS[0]}

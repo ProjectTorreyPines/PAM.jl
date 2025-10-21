@@ -75,7 +75,47 @@ Pkg.add(pam_deps)
 
 # Add PAM itself
 println("    Installing PAM package...")
-Pkg.develop(path=pam_repo)
+
+# Check installation source
+install_source = get(ENV, "PAM_INSTALL_SOURCE", "registry")
+git_ref = get(ENV, "PAM_GIT_REF", "")
+
+if install_source == "git" && !isempty(git_ref)
+    # Install from git repository at specific branch/commit
+    println("    Installing PAM from git: $git_ref")
+    pam_repo_url = "https://github.com/ProjectTorreyPines/PAM.jl.git"
+
+    try
+        Pkg.add(url=pam_repo_url, rev=git_ref)
+        println("    ✓ PAM installed from git ref: $git_ref")
+    catch e
+        println("    ✗ Failed to install from git ref '$git_ref': $e")
+        println("    Falling back to registry...")
+        Pkg.add("PAM")
+    end
+else
+    # Install from registry
+    pam_version = get(ENV, "PAM_VERSION", "")
+
+    if pam_version == "latest" || isempty(pam_version)
+        # Install latest from registry
+        println("    Installing latest PAM from registry...")
+        Pkg.add("PAM")
+    else
+        # Try to install specific version from registry
+        # Remove 'v' prefix and any suffix for version specification
+        pam_version_clean = replace(pam_version, r"^v" => "", r"-.*" => "")
+
+        try
+            println("    Attempting to install PAM@$pam_version_clean from registry...")
+            Pkg.add(name="PAM", version=pam_version_clean)
+        catch e
+            println("    ⚠️  Version $pam_version_clean not found in registry")
+            println("    Installing latest PAM from registry...")
+            Pkg.add("PAM")
+        end
+    end
+end
 
 # Instantiate to get all transitive dependencies
 println("    Resolving dependencies...")
@@ -98,7 +138,7 @@ sysimage_ext = Sys.isapple() ? "dylib" : (Sys.iswindows() ? "dll" : "so")
 sysimage_path = joinpath(install_dir, "sys_pam.$sysimage_ext")
 
 # Use precompile script from PAM repository
-precompile_script = joinpath(pam_repo, "deploy", "precompile_script.jl")
+precompile_script = joinpath(pam_repo, "deploy", "generic", "precompile_script.jl")
 if !isfile(precompile_script)
     error("Precompile script not found: $precompile_script")
 end
