@@ -235,7 +235,11 @@ if [[ "$USE_LOGIN_NODE" == true ]]; then
     echo ""
 
     # Run directly on login node
-    julia --startup-file=no "$(dirname "${BASH_SOURCE[0]}")/install_pam_perlmutter.jl" 2>&1 | tee "$LOG_FILE"
+    bash "$(dirname "${BASH_SOURCE[0]}")/../generic/install_pam.sh" \
+        --install-dir "$BUILD_DIR" \
+        --cpu-target "$JULIA_CPU_TARGET" \
+        --threads "$JULIA_NUM_THREADS" \
+        --verbose 2>&1 | tee "$LOG_FILE"
     JULIA_EXIT_CODE=${PIPESTATUS[0]}
 else
     # Submit job to compute node (recommended)
@@ -243,12 +247,16 @@ else
     echo "Submitting job to compute node..."
     srun \
         --nodes=1 \
-        --qos=regular \
-        --time=04:00:00 \
+        --qos=debug \
+        --time=01:00:00 \
         --constraint=cpu \
         --account="$PAM_ACCOUNT" \
         --output="$LOG_FILE" \
-        julia --startup-file=no "$(dirname "${BASH_SOURCE[0]}")/install_pam_perlmutter.jl"
+        bash "$(dirname "${BASH_SOURCE[0]}")/../generic/install_pam.sh" \
+            --install-dir "$BUILD_DIR" \
+            --cpu-target "$JULIA_CPU_TARGET" \
+            --threads "$JULIA_NUM_THREADS" \
+            --verbose
 
     JULIA_EXIT_CODE=$?
 fi
