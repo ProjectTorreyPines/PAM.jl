@@ -82,10 +82,11 @@ launcher_content = """
 #!/bin/bash
 SYSIMAGE_DIR="$sysimage_dir"
 PROJECT_DIR="$project_dir"
-julia --project=\$PROJECT_DIR --sysimage=\$SYSIMAGE_DIR/sys_pam.$sysimage_ext --startup-file=no "\$@"
+export JULIA_LOAD_PATH=":\$PROJECT_DIR"
+julia --sysimage=\$SYSIMAGE_DIR/sys_pam.$sysimage_ext --startup-file=no "\$@"
 """
 write(launcher_script, launcher_content)
 chmod(launcher_script, 0o755)
 
 println("\n✅ Build complete!")
-println("Usage: $launcher_script [script.jl] or julia --project=$project_dir --sysimage=$sysimage_path")
+println("Usage: $launcher_script [script.jl] or julia --sysimage=$sysimage_path")

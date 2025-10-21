@@ -196,8 +196,8 @@ SYSIMAGE_EXT="SYSIMAGE_EXT_PLACEHOLDER"
 export JULIA_DEPOT_PATH="$HOME/.julia:$INSTALL_DIR/.julia:"
 export JULIA_LOAD_PATH=":$INSTALL_DIR"
 
+# No --project needed: JULIA_LOAD_PATH finds PAM environment, environment is read-only
 exec julia \
-    --project="$INSTALL_DIR" \
     --sysimage="$INSTALL_DIR/sys_pam.$SYSIMAGE_EXT" \
     --startup-file=no \
     "$@"
