@@ -117,8 +117,13 @@ case "$OS_TYPE" in
 esac
 echo "✓ Detected OS: $OS_NAME"
 
-# Resolve installation directory
-INSTALL_DIR=$(cd "$(dirname "$INSTALL_DIR")" 2>/dev/null && pwd)/$(basename "$INSTALL_DIR") || INSTALL_DIR=$(realpath "$INSTALL_DIR" 2>/dev/null || echo "$INSTALL_DIR")
+# Resolve installation directory to absolute path
+# Don't require parent directory to exist (it will be created)
+if [[ "$INSTALL_DIR" != /* ]]; then
+    # Relative path, make absolute
+    INSTALL_DIR="$(pwd)/$INSTALL_DIR"
+fi
+# Absolute paths remain unchanged
 
 echo ""
 echo "Configuration:"

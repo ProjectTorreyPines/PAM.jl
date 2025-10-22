@@ -170,7 +170,15 @@ fi
 # Create directories
 mkdir -p "$MODULE_DIR"
 mkdir -p "$LOG_DIR"
-[[ -d "$BUILD_DIR" ]] && rm -rf "$BUILD_DIR"
+
+# Ensure parent directory exists before creating build dir
+mkdir -p "$(dirname "$BUILD_DIR")"
+
+# Clean existing build directory for fresh build
+if [[ -d "$BUILD_DIR" ]]; then
+    echo "Removing existing build directory: $BUILD_DIR"
+    rm -rf "$BUILD_DIR"
+fi
 
 LOG_FILE="$LOG_DIR/$PAM_VERSION-$(date +%Y%m%d-%H%M%S).log"
 
