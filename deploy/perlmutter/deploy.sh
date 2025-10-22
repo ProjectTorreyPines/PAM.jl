@@ -178,6 +178,19 @@ echo "Build dir:   $BUILD_DIR"
 echo "Log file:    $LOG_FILE"
 echo ""
 
+# ===== Detect Julia Module =====
+# Extract currently loaded Julia module name (e.g., "julia/1.11.4")
+JULIA_MODULE=$(module list 2>&1 | grep -oP 'julia/[\d.]+' | head -1)
+
+if [[ -z "$JULIA_MODULE" ]]; then
+    echo "✗ Error: No Julia module loaded"
+    echo "  Please load Julia module first: module load julia"
+    exit 1
+fi
+
+echo "Julia module: $JULIA_MODULE"
+echo ""
+
 # ===== Environment Variables for Installation =====
 export PAM_INSTALL_DIR="$BUILD_DIR"
 export PAM_REPO_DIR="$PAM_REPO_DIR"
@@ -286,13 +299,25 @@ MODULE_OUTPUT="$BUILD_DIR/pam_module.lua"
 echo "Reading template: $MODULE_TEMPLATE"
 echo "Writing module file: $MODULE_OUTPUT"
 
-# Read template and substitute variables
-sed -e "s|ENV_DIR_PLACEHOLDER|$ENV_DIR|g" \
-    -e "s|PAM_VERSION_PLACEHOLDER|$PAM_VERSION|g" \
-    -e "s|CPU_TARGET_PLACEHOLDER|$JULIA_CPU_TARGET|g" \
+# Substitute placeholders with actual values
+sed -e "s|_PAM_ENV_DIR_|$ENV_DIR|g" \
+    -e "s|_PAM_VERSION_|$PAM_VERSION|g" \
+    -e "s|_CPU_TARGET_|$JULIA_CPU_TARGET|g" \
+    -e "s|_JULIA_MODULE_|$JULIA_MODULE|g" \
     "$MODULE_TEMPLATE" > "$MODULE_OUTPUT"
 
-echo "✓ Module file generated"
+# Validate: check for unreplaced placeholders
+if grep -qE '_PAM_|_JULIA_|_CPU_' "$MODULE_OUTPUT"; then
+    echo "✗ Error: Unreplaced placeholders detected in module file!"
+    echo ""
+    echo "Found:"
+    grep -E '_PAM_|_JULIA_|_CPU_' "$MODULE_OUTPUT"
+    echo ""
+    echo "This indicates a mismatch between template and deploy.sh variables."
+    exit 1
+fi
+
+echo "✓ Module file generated and validated"
 echo ""
 
 # ===== Deploy to Production =====
