@@ -260,8 +260,8 @@ else
     echo "Submitting job to compute node..."
     srun \
         --nodes=1 \
-        --qos=debug \
-        --time=01:00:00 \
+        --qos=regular \
+        --time=03:00:00 \
         --constraint=cpu \
         --account="$PAM_ACCOUNT" \
         --output="$LOG_FILE" \
