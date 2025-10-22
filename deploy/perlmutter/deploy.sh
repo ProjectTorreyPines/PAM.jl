@@ -307,11 +307,12 @@ sed -e "s|_PAM_ENV_DIR_|$ENV_DIR|g" \
     "$MODULE_TEMPLATE" > "$MODULE_OUTPUT"
 
 # Validate: check for unreplaced placeholders
-if grep -qE '_PAM_|_JULIA_|_CPU_' "$MODULE_OUTPUT"; then
+# Look for placeholders with underscores on both sides: _PLACEHOLDER_
+if grep -qE '_PAM_[A-Z_]+_|_JULIA_[A-Z_]+_|_CPU_[A-Z_]+_' "$MODULE_OUTPUT"; then
     echo "✗ Error: Unreplaced placeholders detected in module file!"
     echo ""
     echo "Found:"
-    grep -E '_PAM_|_JULIA_|_CPU_' "$MODULE_OUTPUT"
+    grep -E '_PAM_[A-Z_]+_|_JULIA_[A-Z_]+_|_CPU_[A-Z_]+_' "$MODULE_OUTPUT"
     echo ""
     echo "This indicates a mismatch between template and deploy.sh variables."
     exit 1
