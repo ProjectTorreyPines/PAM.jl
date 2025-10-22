@@ -375,16 +375,25 @@ echo ""
 echo "Verifying installed PAM version..."
 ACTUAL_PAM_VERSION=$(julia --startup-file=no --project="$ENV_DIR" -e 'import Pkg; for pkg in values(Pkg.dependencies()); if pkg.name == "PAM"; println(pkg.version); break; end; end' 2>/dev/null || echo "unknown")
 
+# Determine actual installation source for display
+if [[ "$INSTALL_SOURCE" == "git" ]]; then
+    ACTUAL_SOURCE="from git: $PAM_GIT_REF"
+else
+    ACTUAL_SOURCE="from FuseRegistry"
+fi
+
 echo ""
 echo "===================================="
 echo "✓ PAM $PAM_VERSION Deployment Complete!"
 echo "===================================="
 echo ""
-echo "Deployment version:  $PAM_VERSION ($VERSION_SOURCE)"
-echo "Installed PAM:       v$ACTUAL_PAM_VERSION (from FuseRegistry)"
-if [[ "$PAM_VERSION" != "v$ACTUAL_PAM_VERSION" ]] && [[ ! "$PAM_VERSION" =~ ^dev- ]]; then
+echo "Deployment name:     $PAM_VERSION"
+echo "Installed PAM:       v$ACTUAL_PAM_VERSION ($ACTUAL_SOURCE)"
+
+# Only warn if versions differ AND this is not a development/branch/commit deployment
+if [[ "$PAM_VERSION" != "v$ACTUAL_PAM_VERSION" ]] && [[ ! "$PAM_VERSION" =~ ^(dev-|branch-|commit-) ]]; then
     echo ""
-    echo "⚠️  Note: Deployment version differs from installed version"
+    echo "⚠️  Note: Deployment name differs from package version"
     echo "    This may occur if the registry doesn't have version $PAM_VERSION yet."
 fi
 echo ""
