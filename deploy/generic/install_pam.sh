@@ -195,9 +195,11 @@ SYSIMAGE_EXT="SYSIMAGE_EXT_PLACEHOLDER"
 # Use user depot first (for new package installs), then PAM depot
 # This follows FUSE.jl pattern: user packages go to ~/.julia, PAM packages stay isolated
 export JULIA_DEPOT_PATH="$HOME/.julia:$INSTALL_DIR/.julia:"
-export JULIA_LOAD_PATH=":$INSTALL_DIR"
 
-# No --project needed: JULIA_LOAD_PATH finds PAM environment, environment is read-only
+# Set PAM environment as active project
+# This allows ] pkg mode to show PAM packages, but Project.toml is read-only
+export JULIA_PROJECT="$INSTALL_DIR"
+
 exec julia \
     --sysimage="$INSTALL_DIR/sys_pam.$SYSIMAGE_EXT" \
     --startup-file=no \
