@@ -14,36 +14,59 @@ println("✓ Packages loaded")
 
 # Try to load example data (graceful fallback if not available)
 println("Loading example data...")
-dd = nothing
+dd_json = IMAS.json2imas(joinpath(pkgdir(PAM), "examples", "template_D3D_1layer_2species.json"))
+dd_hdf5 = IMAS.hdf2imas(joinpath(pkgdir(PAM), "examples", "template_D3D_1layer_2species.h5"))
+
+# Run simulation if JSON data loaded
+println("Running basic PAM simulation...")
 try
-    dd = IMAS.json2imas(joinpath(pkgdir(PAM), "examples", "template_D3D_1layer_2species.json"))
-    println("✓ Example data loaded from JSON")
+    pellet = PAM.run_PAM(dd_json;
+        t_start=0.0,
+        t_finish=0.0125,
+        time_step=0.0001,
+        drift_model=:none,
+        Bt_dependance=true,
+        update_plasma=false
+    )
+    println("✓ Basic simulation complete")
+
+    # Precompile common operations
+    maximum(pellet.density_source)
+    println("✓ Common operations precompiled")
 catch e
-    println("⚠️  Could not load example data: $e")
-    println("   Skipping precompile simulation (package imports still precompiled)")
+    println("⚠️  Basic simulation failed: $e")
 end
 
-# Only run simulation if data loaded successfully
-if !isnothing(dd)
-    println("Running PAM simulation...")
-    try
-        pellet = PAM.run_PAM(dd;
-            t_start=0.0,
-            t_finish=0.0125,
-            time_step=0.0001,
-            drift_model=:none,
-            Bt_dependance=true,
-            update_plasma=false
-        )
-        println("✓ Simulation complete")
+println("Precompiling plot recipes...")
+try
+    # Run the simulation again to get pellet for plotting
+    pellet = PAM.run_PAM(dd_json;
+        t_start=0.0,
+        t_finish=0.0125,
+        time_step=0.0001,
+        drift_model=:none,
+        Bt_dependance=true,
+        update_plasma=false
+    )
 
-        # Precompile common operations
-        maximum(pellet.density_source)
-        println("✓ Common operations precompiled")
-    catch e
-        println("⚠️  Simulation failed: $e")
-        println("   (Package code still precompiled)")
-    end
+    # Precompile plot code paths
+    p = plot(dd_hdf5.equilibrium; cx=true, dpi=300)
+    plot!(pellet; plot_cloud=false)
+    savefig(p, "test_D3D_pam.png")
+    sleep(0.5)
+    rm("test_D3D_pam.png"; force=true)
+    println("✓ Plot recipes precompiled")
+catch e
+    println("⚠️  Plot precompilation failed: $e")
+end
+
+# Run full test suite for comprehensive precompilation
+println("Running full test suite...")
+try
+    include(joinpath(pkgdir(PAM), "test", "runtests.jl"))
+    println("✓ Tests complete")
+catch e
+    println("⚠️  Tests failed: $e")
 end
 
 println("Precompilation complete!")
