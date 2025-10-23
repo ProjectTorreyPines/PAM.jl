@@ -266,20 +266,23 @@ else
     # Submit job to compute node (recommended)
     # Use srun for interactive build (better for debugging than sbatch)
     echo "Submitting job to compute node..."
+    echo "Note: This will take 5-10 minutes for precompilation..."
+    echo "      Output is being saved to: $LOG_FILE"
+    echo ""
+
     srun \
         --nodes=1 \
         --qos=regular \
         --time=03:00:00 \
         --constraint=cpu \
         --account="$PAM_ACCOUNT" \
-        --output="$LOG_FILE" \
         bash "$(dirname "${BASH_SOURCE[0]}")/../generic/install_pam.sh" \
             --install-dir "$BUILD_DIR" \
             --cpu-target "$JULIA_CPU_TARGET" \
             --threads "$JULIA_NUM_THREADS" \
-            --verbose
+            --verbose 2>&1 | tee "$LOG_FILE"
 
-    JULIA_EXIT_CODE=$?
+    JULIA_EXIT_CODE=${PIPESTATUS[0]}
 fi
 
 # ===== Check Build Status =====
