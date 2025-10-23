@@ -131,6 +131,13 @@ Pkg.precompile()
 println("")
 println("### Building PAM system image")
 
+# CRITICAL: PackageCompiler is NOT thread-safe!
+# Force single-threaded execution to prevent SIGABRT crashes
+if Threads.nthreads() > 1
+    @warn "PackageCompiler requires single-threaded execution" current_threads=Threads.nthreads()
+    @warn "This may cause crashes. Please restart Julia with JULIA_NUM_THREADS=1"
+end
+
 using PackageCompiler
 
 # Determine platform-specific sysimage extension

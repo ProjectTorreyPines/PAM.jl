@@ -212,7 +212,8 @@ export PAM_GIT_REF="$PAM_GIT_REF"            # branch/commit if git install
 # Julia configuration
 export JULIA_DEPOT_PATH="$BUILD_DIR/.julia:"
 export JULIA_PKG_USE_CLI_GIT=1
-export JULIA_NUM_THREADS=1
+# Note: JULIA_NUM_THREADS is NOT set here - install_pam.sh always uses threads=1
+# because PackageCompiler is not thread-safe
 
 # Perlmutter CPU optimization
 # znver3 for AMD EPYC Milan (login and compute nodes)
@@ -229,7 +230,7 @@ echo "Environment Configuration"
 echo "===================================="
 echo "JULIA_CPU_TARGET:   $JULIA_CPU_TARGET"
 echo "JULIA_DEPOT_PATH:   $JULIA_DEPOT_PATH"
-echo "JULIA_NUM_THREADS:  $JULIA_NUM_THREADS"
+echo "JULIA_NUM_THREADS:  1 (fixed - PackageCompiler requires single-threaded)"
 echo ""
 
 # ===== Run Installation on Compute Node =====
@@ -259,7 +260,6 @@ if [[ "$USE_LOGIN_NODE" == true ]]; then
     bash "$(dirname "${BASH_SOURCE[0]}")/../generic/install_pam.sh" \
         --install-dir "$BUILD_DIR" \
         --cpu-target "$JULIA_CPU_TARGET" \
-        --threads "$JULIA_NUM_THREADS" \
         --verbose 2>&1 | tee "$LOG_FILE"
     JULIA_EXIT_CODE=${PIPESTATUS[0]}
 else
@@ -279,7 +279,6 @@ else
         bash "$(dirname "${BASH_SOURCE[0]}")/../generic/install_pam.sh" \
             --install-dir "$BUILD_DIR" \
             --cpu-target "$JULIA_CPU_TARGET" \
-            --threads "$JULIA_NUM_THREADS" \
             --verbose 2>&1 | tee "$LOG_FILE"
 
     JULIA_EXIT_CODE=${PIPESTATUS[0]}

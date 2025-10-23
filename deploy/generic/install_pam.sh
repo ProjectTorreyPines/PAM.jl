@@ -14,7 +14,7 @@ PAM_REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 # ===== Argument Parsing =====
 INSTALL_DIR="$DEFAULT_INSTALL_DIR"
 CPU_TARGET="$DEFAULT_CPU_TARGET"
-JULIA_THREADS=1
+JULIA_THREADS=1  # FIXED: PackageCompiler requires single-threaded execution
 VERBOSE=true
 
 usage() {
@@ -30,9 +30,11 @@ Options:
                         - native: Fastest on your CPU, not portable
                         - haswell: Intel Haswell+ optimized
                         - znver3: AMD EPYC optimized
-  --threads N           Julia threads for installation (default: 1)
-  --verbose            Enable verbose output
-  --help               Show this help message
+  --verbose             Enable verbose output
+  --help                Show this help message
+
+Note: Installation always uses single-threaded execution (threads=1)
+      because PackageCompiler is not thread-safe.
 
 Examples:
   # Basic installation (portable, works everywhere)
@@ -59,10 +61,6 @@ while [[ $# -gt 0 ]]; do
             ;;
         --cpu-target)
             CPU_TARGET="$2"
-            shift 2
-            ;;
-        --threads)
-            JULIA_THREADS="$2"
             shift 2
             ;;
         --verbose)
@@ -129,7 +127,7 @@ echo ""
 echo "Configuration:"
 echo "  Install directory: $INSTALL_DIR"
 echo "  CPU target:        $CPU_TARGET"
-echo "  Julia threads:     $JULIA_THREADS"
+echo "  Julia threads:     $JULIA_THREADS (fixed - PackageCompiler not thread-safe)"
 echo "  Sysimage ext:      $SYSIMAGE_EXT"
 echo ""
 
