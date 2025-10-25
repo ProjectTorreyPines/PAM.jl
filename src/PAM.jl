@@ -659,14 +659,6 @@ end
     end
 end
 
-# Convenient dispatch to call IMAS's trace_simple_surfaces
-function IMAS.trace_simple_surfaces(eqt::IMAS.equilibrium__time_slice{T}, wall_r::AbstractVector{T}, wall_z::AbstractVector{T}) where {T<:Real}
-    eqt2d = findfirst(:rectangular, eqt.profiles_2d)
-    r, z, PSI_interpolant = IMAS.ψ_interpolant(eqt2d)
-    RA = eqt.global_quantities.magnetic_axis.r
-    ZA = eqt.global_quantities.magnetic_axis.z
-    return IMAS.trace_simple_surfaces(eqt.profiles_1d.psi, r, z, eqt2d.psi, PSI_interpolant, RA, ZA, wall_r, wall_z)
-end
 
 """
     run_PAM(dd::IMAS.dd; t_start::Float64, t_finish::Float64, time_step::Float64, drift_model::Symbol, Bt_dependance::Bool, update_plasma::Bool)
