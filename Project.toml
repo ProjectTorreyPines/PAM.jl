@@ -1,17 +1,19 @@
 name = "PAM"
 uuid = "8217f67a-9bf0-495c-a6dc-30c3fb73287a"
-authors = ["Galina Avdeeva <80053907+avdeevag@users.noreply.github.com>"]
 version = "2.0.2"
+authors = ["Galina Avdeeva <80053907+avdeevag@users.noreply.github.com>"]
 
 [deps]
 DifferentialEquations = "0c46a032-eb83-5123-abaf-570d42b7fbaa"
+HDF5 = "f67ccb44-e63f-5c2f-98bd-6dc0ccc4ba2f"
 IMAS = "13ead8c1-b7d1-41bb-a6d0-5b8b65ed587a"
 Plots = "91a5bcdd-55d7-5caf-9e0b-520d859cae80"
 StaticArrays = "90137ffa-7385-5640-81b9-e52037218182"
 
 [compat]
 DifferentialEquations = "7.14.0"
+HDF5 = "0.17.2"
 IMAS = "1, 2, 3, 4, 5, 6"
+Plots = "1"
 StaticArrays = "1.9.15"
 julia = "1"
-Plots = "1"
