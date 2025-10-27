@@ -4,6 +4,9 @@ import IMAS
 using Plots
 import DifferentialEquations
 
+include("types.jl")
+include("io.jl")
+
 function pellet_position(starting_position::Vector{Float64}, velocity_vector::Vector{Float64}, time::AbstractVector, tinj::Float64)
     x = starting_position[1] .+ velocity_vector[1] .* (time .- tinj)
     y = starting_position[2] .+ velocity_vector[2] .* (time .- tinj)
@@ -14,43 +17,6 @@ end
 function projected_coordinate(x::AbstractVector{Float64}, y::AbstractVector{Float64}, z::AbstractVector{Float64})
     r = sqrt.(x .^ 2.0 .+ y .^ 2.0)
     return r, z
-end
-
-"""
-Preallocated buffer pool to reduce allocations
-"""
-mutable struct AllocationPool{T<:Real}
-    nsource_buffer::Vector{T}
-    nsource_max_len::Int
-end
-
-function AllocationPool(::Type{T}, surfaces::Vector{<:IMAS.AbstractFluxSurface}) where {T<:Real}
-    max_len = maximum(length(surf.r) for surf in surfaces)
-    return AllocationPool{T}(Vector{T}(undef, max_len), max_len)
-end
-
-mutable struct Pellet{A,T,N,S,B,X,P}
-    properties::IMAS.pellets__time_slice___pellet
-    Btdep::B
-    update_plasma::B
-    drift_model::S
-    time::A
-    t::T
-    Bt::A
-    velocity_vector::X
-    r::A
-    R_drift::A
-    z::A
-    x::A
-    y::A
-    ρ::A
-    Te::A
-    ne::A
-    radius::A
-    ablation_rate::A
-    density_source::N
-    temp_drop::A
-    pool::P
 end
 
 function Pellet(
@@ -116,9 +82,11 @@ function Pellet(
     density_source = fill(0.0, (length(time), length(surfaces)))
 
     # Initialize allocation pool
-    pool = AllocationPool(Float64, surfaces)
+    _pool = AllocationPool(Float64, surfaces)
 
-    return Pellet(
+    FT = eltype(time)
+
+    return Pellet{FT}(
         pelt,
         Bt_dependance,
         update_plasma,
@@ -139,7 +107,7 @@ function Pellet(
         ablation_rate,
         density_source,
         temp_drop,
-        pool
+        _pool
     )
 end
 
@@ -558,7 +526,7 @@ end
 function pellet_density(pelt::Pellet, surface::IMAS.AbstractFluxSurface, k::Int)
     # Get buffer view from pool
     len = length(surface.r)
-    nsource = @view pelt.pool.nsource_buffer[1:len]
+    nsource = @view pelt._pool.nsource_buffer[1:len]
 
     # Cloud size calculations
     cloudFactor = 5
