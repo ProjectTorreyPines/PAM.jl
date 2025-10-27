@@ -63,3 +63,25 @@ end
     @test isapprox(pellet_PAM.radius[4],  0.0009515680832308055)
     @test isapprox(pellet_PAM.x[4], 2.2399999999999998)
 end
+
+@testset "I/O and Equality operators" begin
+    pellet = PAM.hdf2pellet(joinpath(pkgdir(PAM), "examples", "pellet_D3D.h5"))
+
+    pellet2 = deepcopy(pellet)
+
+    @test pellet == pellet2
+    @test isequal(pellet, pellet2)
+    @test isapprox(pellet, pellet2)
+    @test !diff(pellet, pellet2)
+
+    # Modify a field slightly
+    pellet2.Te[end] += 1.0e-10
+
+    @test pellet != pellet2
+    @test !isequal(pellet, pellet2)
+    @test isapprox(pellet, pellet2)
+    @test diff(pellet, pellet2)
+
+    @test !isapprox(pellet, pellet2; atol=1e-12) # should fail for 1e-10 difference
+    @test isapprox(pellet, pellet2; atol=1e-5) # should pass for 1e-10 difference
+end
