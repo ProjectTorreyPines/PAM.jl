@@ -57,3 +57,68 @@ mutable struct Pellet{FT<:AbstractFloat}
 end
 
 const private_fields = (:_pool, )
+const public_fields = filter(x -> x ∉ private_fields, fieldnames(Pellet))
+
+
+# Equality operators
+
+"""
+Programming equality: NaN == NaN, missing == missing. Always returns Bool.
+"""
+function Base.isequal(p1::Pellet, p2::Pellet)
+	for field in public_fields
+		isequal(getfield(p1, field), getfield(p2, field)) || return false
+	end
+	return true
+end
+
+"""
+Mathematical equality: NaN ≠ NaN, missing propagates. Returns Bool or Missing.
+"""
+function Base.:(==)(p1::Pellet, p2::Pellet)
+	for field in public_fields
+		field_eq = getfield(p1, field) == getfield(p2, field)
+		ismissing(field_eq) && return missing
+		field_eq || return false
+	end
+	return true
+end
+
+"""
+Approximate equality with tolerance. Useful for comparing simulation results.
+Supports rtol and atol keyword arguments (see Base.isapprox).
+Non-numeric fields (Symbol, Bool) are compared with exact equality.
+"""
+function Base.isapprox(p1::Pellet, p2::Pellet; kwargs...)
+	for field in public_fields
+		a = getfield(p1, field)
+		b = getfield(p2, field)
+
+		# Non-numeric types use exact equality
+		if a isa Union{Symbol, Bool}
+			isequal(a, b) || return false
+		else
+			# Numeric types use approximate equality
+			isapprox(a, b; kwargs...) || return false
+		end
+	end
+	return true
+end
+
+"""
+	diff(p1::Pellet, p2::Pellet; verbose=true) -> Bool
+
+Compare two Pellets and print differences. Returns true if different, false if equal.
+Set `verbose=false` for fast check without output.
+"""
+function Base.diff(p1::Pellet, p2::Pellet; verbose::Bool=true)
+	has_diff = false
+	for field in public_fields
+		if !isequal(getfield(p1, field), getfield(p2, field))
+			verbose ? println("Field \"$(field)\" differs") : return true
+			has_diff = true
+		end
+	end
+	return has_diff
+end
+

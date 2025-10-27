@@ -22,11 +22,9 @@ function pellet2hdf(pelt::Pellet, filename::AbstractString)
 		gparent = HDF5.create_group(fid, "properties")
 		IMAS.imas2hdf(pelt.properties, gparent)
 
-		# Write all other fields (excluding properties and private_fields)
-		for field in fieldnames(typeof(pelt))
-			if field in (:properties, private_fields...)
-				continue
-			end
+		# Write all other fields (excluding properties)
+		for field in public_fields
+			field == :properties && continue
 
 			value = getfield(pelt, field)
 
@@ -74,11 +72,9 @@ function hdf2pellet(filename::AbstractString)
 	IMAS.hdf2imas(fid["properties"], pelt.properties; 
 				show_warnings=false, skip_non_coordinates=false, error_on_missing_coordinates=false)
 
-	# Read all other fields (excluding properties and private_fields)
-	for field in fieldnames(typeof(pelt))
-		if field in (:properties, private_fields...)
-			continue
-		end
+	# Read all other fields (excluding properties)
+	for field in public_fields
+		field == :properties && continue
 
 		value = fid[string(field)][]
 
@@ -96,3 +92,5 @@ function hdf2pellet(filename::AbstractString)
 
 	return pelt
 end
+
+export pellet2hdf, hdf2pellet
