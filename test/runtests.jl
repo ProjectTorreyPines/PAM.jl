@@ -3,8 +3,8 @@ import IMAS
 using Test
 
 @testset "PAM" begin
-    dd_D3D_json = IMAS.json2imas(joinpath(@__DIR__, "..", "examples", "template_D3D_1layer_2species.json"))
-    dd_D3D = IMAS.hdf2imas(joinpath(@__DIR__, "..", "examples", "template_D3D_1layer_2species.h5"))
+    dd_D3D_json = IMAS.json2imas(joinpath(pkgdir(PAM), "examples", "template_D3D_1layer_2species.json"))
+    dd_D3D = IMAS.hdf2imas(joinpath(pkgdir(PAM), "examples", "template_D3D_1layer_2species.h5"))
 
     @test dd_D3D_json == dd_D3D
 
@@ -27,7 +27,7 @@ using Test
 end
 
 @testset "Comparison with OMFIT PAM" begin
-    dd_D3D = IMAS.hdf2imas(joinpath(@__DIR__, "..", "examples", "template_D3D_1layer_2species.h5"))
+    dd_D3D = IMAS.hdf2imas(joinpath(pkgdir(PAM), "examples", "template_D3D_1layer_2species.h5"))
     dd_D3D.pellets.time_slice[].pellet[1].velocity_initial = 200.0;
 
     inputs=(
@@ -62,4 +62,26 @@ end
     @test isapprox(pellet_PAM.temp_drop[4],  0.9994708595114168)
     @test isapprox(pellet_PAM.radius[4],  0.0009515680832308055)
     @test isapprox(pellet_PAM.x[4], 2.2399999999999998)
+end
+
+@testset "I/O and Equality operators" begin
+    pellet = PAM.hdf2pellet(joinpath(pkgdir(PAM), "examples", "pellet_D3D.h5"))
+
+    pellet2 = deepcopy(pellet)
+
+    @test pellet == pellet2
+    @test isequal(pellet, pellet2)
+    @test isapprox(pellet, pellet2)
+    @test !diff(pellet, pellet2)
+
+    # Modify a field slightly
+    pellet2.Te[end] += 1.0e-10
+
+    @test pellet != pellet2
+    @test !isequal(pellet, pellet2)
+    @test isapprox(pellet, pellet2)
+    @test diff(pellet, pellet2)
+
+    @test !isapprox(pellet, pellet2; atol=1e-12) 
+    @test isapprox(pellet, pellet2; atol=1e-5) 
 end
