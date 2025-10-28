@@ -3,8 +3,8 @@ import IMAS
 using Test
 
 @testset "PAM" begin
-    dd_D3D_json = IMAS.json2imas(joinpath(@__DIR__, "..", "examples", "template_D3D_1layer_2species.json"))
-    dd_D3D = IMAS.hdf2imas(joinpath(@__DIR__, "..", "examples", "template_D3D_1layer_2species.h5"))
+    dd_D3D_json = IMAS.json2imas(joinpath(pkgdir(PAM), "examples", "template_D3D_1layer_2species.json"))
+    dd_D3D = IMAS.hdf2imas(joinpath(pkgdir(PAM), "examples", "template_D3D_1layer_2species.h5"))
 
     @test dd_D3D_json == dd_D3D
 
@@ -27,7 +27,7 @@ using Test
 end
 
 @testset "Comparison with OMFIT PAM" begin
-    dd_D3D = IMAS.hdf2imas(joinpath(@__DIR__, "..", "examples", "template_D3D_1layer_2species.h5"))
+    dd_D3D = IMAS.hdf2imas(joinpath(pkgdir(PAM), "examples", "template_D3D_1layer_2species.h5"))
     dd_D3D.pellets.time_slice[].pellet[1].velocity_initial = 200.0;
 
     inputs=(
@@ -82,6 +82,6 @@ end
     @test isapprox(pellet, pellet2)
     @test diff(pellet, pellet2)
 
-    @test !isapprox(pellet, pellet2; atol=1e-12) # should fail for 1e-10 difference
-    @test isapprox(pellet, pellet2; atol=1e-5) # should pass for 1e-10 difference
+    @test !isapprox(pellet, pellet2; atol=1e-12) 
+    @test isapprox(pellet, pellet2; atol=1e-5) 
 end
