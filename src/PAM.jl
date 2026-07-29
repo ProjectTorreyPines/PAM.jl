@@ -24,7 +24,7 @@ mutable struct AllocationPool{T<:Real}
     nsource_max_len::Int
 end
 
-function AllocationPool(::Type{T}, surfaces::Vector{IMAS.FluxSurface}) where {T<:Real}
+function AllocationPool(::Type{T}, surfaces::Vector{<:IMAS.AbstractFluxSurface}) where {T<:Real}
     max_len = maximum(length(surf.r) for surf in surfaces)
     return AllocationPool{T}(Vector{T}(undef, max_len), max_len)
 end
@@ -58,7 +58,7 @@ function Pellet(
     eqt::IMAS.equilibrium__time_slice,
     cp1d::IMAS.core_profiles__profiles_1d,
     time::Vector{Float64},
-    surfaces::Vector{IMAS.FluxSurface},
+    surfaces::Vector{<:IMAS.AbstractFluxSurface},
     drift_model::Symbol,
     Bt_dependance::Bool,
     update_plasma::Bool
@@ -555,7 +555,7 @@ function dr_dt!(pelt::Pellet, k::Int)
     return
 end
 
-function pellet_density(pelt::Pellet, surface::IMAS.FluxSurface, k::Int)
+function pellet_density(pelt::Pellet, surface::IMAS.AbstractFluxSurface, k::Int)
     # Get buffer view from pool
     len = length(surface.r)
     nsource = @view pelt.pool.nsource_buffer[1:len]
@@ -583,7 +583,7 @@ function pellet_density(pelt::Pellet, surface::IMAS.FluxSurface, k::Int)
     return IMAS.flux_surface_avg(nsource, surface)
 end
 
-function ablate!(eqt::IMAS.equilibrium__time_slice, cp1d::IMAS.core_profiles__profiles_1d, pelt::Pellet, surfaces::Vector{IMAS.FluxSurface})
+function ablate!(eqt::IMAS.equilibrium__time_slice, cp1d::IMAS.core_profiles__profiles_1d, pelt::Pellet, surfaces::Vector{<:IMAS.AbstractFluxSurface})
     pellet_source = zeros(length(pelt.time), length(surfaces))
 
     for k in 2:length(pelt.time)
@@ -659,6 +659,7 @@ end
     end
 end
 
+
 """
     run_PAM(dd::IMAS.dd; t_start::Float64, t_finish::Float64, time_step::Float64, drift_model::Symbol, Bt_dependance::Bool, update_plasma::Bool)
 
@@ -672,7 +673,7 @@ function run_PAM(dd::IMAS.dd; t_start::Float64, t_finish::Float64, time_step::Fl
     time = collect(range(t_start, t_finish; step=time_step))
 
     # define flux surfaces, will be needed for the pellet source calculations
-    surfaces = IMAS.trace_surfaces(eqt, IMAS.first_wall(dd.wall)...)
+    surfaces = IMAS.trace_simple_surfaces(eqt, IMAS.first_wall(dd.wall)...)
 
     # initialize the pellet structure 
     pellet = Pellet(dd.pellets.time_slice[].pellet[1], eqt, cp1d, time, surfaces, drift_model, Bt_dependance, update_plasma)
