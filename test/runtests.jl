@@ -26,6 +26,35 @@ using Test
 
 end
 
+@testset "species detection" begin
+    dd_D3D = IMAS.hdf2imas(joinpath(@__DIR__, "..", "examples", "template_D3D_1layer_2species.h5"))
+    dd_D3D.pellets.time_slice[].pellet[1].velocity_initial = 200.0
+
+    function ablation_rate(species)
+        dd = deepcopy(dd_D3D)
+        layer = dd.pellets.time_slice[].pellet[1].layer[1]
+        resize!(layer.species, length(species))
+        for (s, (label, fraction)) in zip(layer.species, species)
+            s.label = label
+            s.fraction = fraction
+        end
+        pellet = PAM.run_PAM(dd; t_start=0.0, t_finish=0.0045, time_step=0.0001, drift_model=:none, Bt_dependance=true, update_plasma=false)
+        return pellet.ablation_rate
+    end
+
+    # the order of the species in the layer does not matter
+    @test ablation_rate([("D", 0.6), ("T", 0.4)]) == ablation_rate([("T", 0.4), ("D", 0.6)])
+    rate_DNe = ablation_rate([("D", 0.6), ("Ne20", 0.4)])
+    @test maximum(rate_DNe) > 0
+    @test ablation_rate([("Ne20", 0.4), ("D", 0.6)]) == rate_DNe
+
+    # nor does the label of the element; "Ne" and "C" carry the natural isotope mix
+    @test isapprox(ablation_rate([("D", 0.6), ("Ne", 0.4)]), rate_DNe; rtol=2e-2)
+    @test isapprox(ablation_rate([("C", 1.0)]), ablation_rate([("C12", 1.0)]); rtol=1e-3)
+
+    @test_throws ErrorException ablation_rate([("C12", 0.5), ("D", 0.5)])
+end
+
 @testset "Comparison with OMFIT PAM" begin
     dd_D3D = IMAS.hdf2imas(joinpath(@__DIR__, "..", "examples", "template_D3D_1layer_2species.h5"))
     dd_D3D.pellets.time_slice[].pellet[1].velocity_initial = 200.0;
