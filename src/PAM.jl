@@ -348,24 +348,22 @@ function dr_dt!(pelt::Pellet, k::Int)
         Bt_exp = 0
     end
 
-    # ablation model for the DT pellet
-    if ("D" in species_list) & ("T" in species_list)
-        if species_list[1] == "D"
-            AD = A[1]
-            AT = A[2]
-            FD = fractions[1]
-            FT = fractions[2]
-            ZD = Z[1]
-            ZT = Z[2]
+    # species are identified by element, whatever their label ("Ne" or "Ne20", "C" or "C12") or
+    # their order in the layer; the hydrogen isotopes are told apart by mass number
+    iD = findfirst(i -> Z[i] == 1 && round(A[i]) == 2, eachindex(Z))
+    iT = findfirst(i -> Z[i] == 1 && round(A[i]) == 3, eachindex(Z))
+    iNe = findfirst(==(10), Z)
+    iC = findfirst(==(6), Z)
+    elements(indices...) = length(Z) == length(indices) && all(!isnothing, indices)
 
-        else
-            AD = A[2]
-            AT = A[1]
-            FD = fractions[2]
-            FT = fractions[1]
-            ZD = Z[2]
-            ZT = Z[1]
-        end
+    # ablation model for the DT pellet
+    if elements(iD, iT)
+        AD = A[iD]
+        AT = A[iT]
+        FD = fractions[iD]
+        FT = fractions[iT]
+        ZD = Z[iD]
+        ZT = Z[iT]
         # according equation #1 in J.McClenaghan at al Nucl.Fusion 63 (2023) 036015 (two coefficients are missing) and normalization to FUSE units
 
         ρ_zero = (1 - FD + FD * AD / AT) * ((1 - FD) / pellet_mass_density("T") + (FD * AD / AT) / pellet_mass_density("D"))^(-1) #[g cm^-3]
@@ -400,24 +398,13 @@ function dr_dt!(pelt::Pellet, k::Int)
 
         pelt.ablation_rate[k] = GT + GD
 
-    elseif ("Ne20" in species_list) & ("D" in species_list)
-
-        if species_list[1] == "Ne"
-            ANe = A[1]
-            AD = A[2]
-            FNe = fractions[1]
-            FD = fractions[2]
-            ZNe = Z[1]
-            ZD = Z[2]
-
-        else
-            ANe = A[2]
-            AD = A[1]
-            FD = fractions[1]
-            FNe = fractions[2]
-            ZNe = Z[2]
-            ZD = Z[1]
-        end
+    elseif elements(iNe, iD)
+        ANe = A[iNe]
+        AD = A[iD]
+        FNe = fractions[iNe]
+        FD = fractions[iD]
+        ZNe = Z[iNe]
+        ZD = Z[iD]
 
         Wratio = (1 - FD) * ANe / AD + FD
 
@@ -456,11 +443,11 @@ function dr_dt!(pelt::Pellet, k::Int)
 
         pelt.ablation_rate[k] = GD + GNe
 
-    elseif "C12" in species_list
+    elseif elements(iC)
 
         C0 = 8.146777e-9
-        AC = A[1]
-        ZC = Z[1]
+        AC = A[iC]
+        ZC = Z[iC]
         gamma = 5.0 / 3.0
 
         ZstarPlus1C = 2.86
@@ -549,7 +536,7 @@ function dr_dt!(pelt::Pellet, k::Int)
         pelt.ablation_rate[k] = G * 6.022e23 / AC * ZC
 
     else
-        error("No ablation model is implemented for such combination of species")
+        error("No ablation model is implemented for the species $species_list: supported are D-T, D-Ne and C")
     end
 
     return
