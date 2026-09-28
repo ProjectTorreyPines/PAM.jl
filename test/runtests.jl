@@ -26,6 +26,30 @@ using Test
 
 end
 
+@testset "get_ilayer" begin
+    dd = IMAS.hdf2imas(joinpath(@__DIR__, "..", "examples", "template_D3D_1layer_2species.h5"))
+    eqt = dd.equilibrium.time_slice[]
+    cp1d = dd.core_profiles.profiles_1d[]
+    pelt = dd.pellets.time_slice[].pellet[1]
+    # two layers, innermost first: a 0.7 mm core under a 0.3 mm shell
+    core = deepcopy(pelt.layer[1])
+    resize!(pelt.layer, 2)
+    pelt.layer[1] = core
+    pelt.layer[2] = deepcopy(core)
+    pelt.layer[1].thickness = 0.7e-3
+    pelt.layer[2].thickness = 0.3e-3
+    pelt.shape.size = [1.0e-3]
+    surfaces = IMAS.trace_surfaces(eqt, IMAS.first_wall(dd.wall)...)
+    pellet = PAM.Pellet(pelt, eqt, cp1d, collect(range(0.0, 0.001; step=0.0001)), surfaces, :none, false, false)
+
+    # the layer that ablates during step 2 is the one holding the surface at the start of the step
+    for (radius, layer) in ((1.0e-3, 2), (0.8e-3, 2), (0.7e-3, 1), (0.2e-3, 1))
+        pellet.radius[1] = radius
+        pellet.radius[2] = 0.0
+        @test PAM.get_ilayer(pellet, 2) == layer
+    end
+end
+
 @testset "Comparison with OMFIT PAM" begin
     dd_D3D = IMAS.hdf2imas(joinpath(@__DIR__, "..", "examples", "template_D3D_1layer_2species.h5"))
     dd_D3D.pellets.time_slice[].pellet[1].velocity_initial = 200.0;
