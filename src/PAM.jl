@@ -146,17 +146,14 @@ end
 """
     get_ilayer(pelt::Pellet, k::Int)
 
-Return the layer index based on current pellet radius and thikness of the pellet radii
+Return the index of the layer that is ablating during time step `k`: the layer holding the pellet
+surface at the start of the step. Layers are listed from the innermost outwards.
 """
 function get_ilayer(pelt::Pellet, k::Int)
-    layers = cumsum([layer.thickness for layer in pelt.properties.layer])
-    pos = pelt.radius[k] .- layers
-    if maximum(pos) >= 0.0
-        layer_index = maximum([i for i in 1:length(pos) if pos[i] >= 0.0])
-    else
-        layer_index = 1
-    end
-    return layer_index
+    # `pelt.radius[k]` is the radius this step computes, so the surface is at `pelt.radius[k-1]`
+    radius = pelt.radius[k-1]
+    outer_radii = cumsum([layer.thickness for layer in pelt.properties.layer])
+    return findfirst(r_outer -> radius <= r_outer, outer_radii)
 end
 
 # the number of g/m^-3 # the data of mass density and atomic weight is sourced from PAM model within OMFIT
